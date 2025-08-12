@@ -1,0 +1,30 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "server": "nodemon server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/express": "^1.7.6",
+    "axios": "^1.10.0",
+    "cloudinary": "^2.7.0",
+    "cors": "^2.8.5",
+    "curl": "^0.1.4",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "inngest": "^3.40.1",
+    "mongoose": "^8.16.3",
+    "nodemailer": "^7.0.5",
+    "stripe": "^18.3.0",
+    "svix": "^1.69.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
