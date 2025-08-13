@@ -8,6 +8,8 @@ import thousandConvert from '../../lib/ThousandCalculate';
 import toast from 'react-hot-toast';
 import { useAppContext } from '../../context/Appcontext';
 
+const DEMO = import.meta.env.VITE_DEMO_MODE === '1';
+
 const Addshow = () => {
   const { axios, getToken, user, bumpMovies } = useAppContext();
   const currency = import.meta.env.VITE_CURRENCY;
@@ -28,7 +30,7 @@ const Addshow = () => {
       if (data.success) setNowPlayingMovies(data.movies);
       else toast.error(data.message);
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Now Playing fetch failed");
+      toast.error(error?.response?.data?.message || 'Now Playing fetch failed');
     }
   };
 
@@ -102,22 +104,25 @@ const Addshow = () => {
         times.map(time => ({ date, time }))
       );
 
-      const payload = { movieId: selectedMovie, showsInput, showprice: Number(showprice) };
+      if (showsInput.length === 0) return toast.error('Add at least one date & time');
 
-      const { data } = await axios.post('/api/show/add', payload, {
-        headers: { Authorization: `Bearer ${await getToken()}` }
+      const payload = { movieId: selectedMovie, showsInput, showprice: Number(showprice) };
+      const endpoint = DEMO ? '/api/admin/demo-show' : '/api/show/add';
+
+      const token = await getToken();
+      const { data } = await axios.post(endpoint, payload, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       if (data.success) {
-        toast.success('Show added successfully');
+        toast.success(DEMO ? 'Demo show(s) added (visible only to you)' : 'Show added successfully');
         setSelectedMovie(null);
         setDateTimeInput('');
         setDateTimeSelection({});
         setShowPrice('');
-        // 🔁 trigger Movies page refresh
-        bumpMovies();
+        bumpMovies(); // 🔁 trigger Movies page refresh
       } else {
-        toast.error(data.message);
+        toast.error(data.message || 'Failed to add show');
       }
     } catch (error) {
       toast.error('Error adding show');
@@ -230,6 +235,12 @@ const Addshow = () => {
       >
         Add Show
       </button>
+
+      {DEMO && (
+        <p className="text-xs text-gray-400 mt-2">
+          Demo mode: shows you add here are stored privately and are only visible to you.
+        </p>
+      )}
     </div>
   );
 };

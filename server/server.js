@@ -11,6 +11,8 @@ import bookingRouter from './Routes/bookingrouter.js';
 import adminRouter from './Routes/adminrouter.js';
 import userRouter from './Routes/userrouter.js';
 import { stripeWebhooks } from './Control/Stripewebhooks.js';
+import { attachDemoFlag } from './Middleware/Demo.js';
+
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -67,6 +69,8 @@ app.use(express.json());
 
 // Clerk
 app.use(clerkMiddleware());
+app.use(attachDemoFlag);
+
 
 // (optional) auto-promote admin
 app.use(async (req, _res, next) => {

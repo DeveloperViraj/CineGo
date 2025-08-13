@@ -3,6 +3,7 @@ import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
 import User from "../models/User.js";
 import { clerkClient, getAuth } from "@clerk/express";
+import DemoShow from "../models/DemoShow.js";
 
 // Helper
 const primaryEmailOf = (u) =>
@@ -93,14 +94,21 @@ export const revokeAdmin = async (req, res) => {
 };
 
 // ---------- dashboard & lists ----------
-export const adminDashboarddata = async (_req, res) => {
+export const adminDashboarddata = async (req, res) => {
   try {
     const bookings = await Booking.find({ isPaid: true });
-    const activeshows = await Show.find({ showDateTime: { $gte: new Date() } }).populate("movie");
-    const totalUsers = await User.countDocuments();
+    let activeshows = await Show.find({ showDateTime: { $gte: new Date() } }).populate("movie");
+
+    if (req.isDemo) {
+      const demo = await DemoShow.find({
+        demoOwner: req.demoUserId,
+        showDateTime: { $gte: new Date() },
+      }).populate("movie");
+      activeshows = [...activeshows, ...demo];
+    }
 
     const dashboarddata = {
-      totalUsers,
+      totalUsers: await User.countDocuments(),
       totalRevenue: bookings.reduce((sum, b) => sum + b.amount, 0),
       totalBookings: bookings.length,
       activeshows,
@@ -111,12 +119,28 @@ export const adminDashboarddata = async (_req, res) => {
   }
 };
 
-export const getallshows = async (_req, res) => {
+
+export const getallshows = async (req, res) => {
   try {
-    const showdata = await Show.find({ showDateTime: { $gte: new Date() } })
+    const real = await Show.find({ showDateTime: { $gte: new Date() } })
       .populate("movie")
-      .sort({ showDateTime: 1 });
-  res.json({ success: true, showdata });
+      .sort({ showDateTime: 1 })
+      .lean();
+
+    let demo = [];
+    if (req.isDemo) {
+      demo = await DemoShow.find({
+        demoOwner: req.demoUserId,
+        showDateTime: { $gte: new Date() },
+      }).populate("movie").sort({ showDateTime: 1 }).lean();
+    }
+
+    const showdata = [
+      ...real.map(s => ({ ...s, isDemo: false })),
+      ...demo.map(s => ({ ...s, isDemo: true })),
+    ];
+
+    res.json({ success: true, showdata });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
@@ -131,5 +155,57 @@ export const getbookings = async (_req, res) => {
     res.json({ success: true, bookings });
   } catch (error) {
     res.json({ success: false, message: error.message });
+  }
+};
+
+export const demoElevate = async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const { code } = req.body || {};
+    if (!process.env.DEMO_CODE) return res.status(503).json({ success: false, message: "Demo disabled" });
+    if (code !== process.env.DEMO_CODE) return res.status(403).json({ success: false, message: "Invalid demo code" });
+
+    const me = await clerkClient.users.getUser(userId);
+    await clerkClient.users.updateUser(userId, {
+      privateMetadata: { ...me.privateMetadata, role: "admin", demo: true },
+    });
+    return res.json({ success: true, message: "Demo admin enabled. Refresh the page." });
+  } catch (e) {
+    console.error("demoElevate:", e);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+export const demoCreateShow = async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const me = await clerkClient.users.getUser(userId);
+    if (me?.privateMetadata?.demo !== true) {
+      return res.status(403).json({ success: false, message: "Demo only" });
+    }
+
+    const { movieId, showsInput = [], showprice } = req.body || {};
+    if (!movieId || !Array.isArray(showsInput) || !showprice) {
+      return res.status(400).json({ success: false, message: "Invalid payload" });
+    }
+
+    const docs = showsInput.map(({ date, time }) => ({
+      movie: String(movieId),
+      showDateTime: new Date(`${date}T${time}:00`),
+      showprice: Number(showprice),
+      occupiedSeats: {},
+      isDemo: true,
+      demoOwner: userId,
+    }));
+
+    const created = await DemoShow.insertMany(docs);
+    return res.json({ success: true, count: created.length, shows: created });
+  } catch (e) {
+    console.error("demoCreateShow:", e);
+    return res.status(500).json({ success: false, message: "Failed to create demo show" });
   }
 };

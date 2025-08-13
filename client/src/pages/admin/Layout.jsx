@@ -26,19 +26,14 @@ const Layout = () => {
   const path = location.pathname;
 
   useEffect(() => {
-    if (waiting) return;
+  if (waiting) return;
 
-    // Owner-only page
-    if (path.startsWith("/admin/access")) {
-      if (!isOwner) navigate("/");
-      return;
-    }
+  // All /admin pages require admin (owner is subset; AdminAccess will self-gate)
+  if (path.startsWith("/admin") && !isAdmin) {
+    navigate("/");
+  }
+}, [waiting, isAdmin, path, navigate]);
 
-    // All other /admin pages require admin
-    if (path.startsWith("/admin") && !isAdmin) {
-      navigate("/");
-    }
-  }, [waiting, isAdmin, isOwner, path, navigate]);
 
   if (waiting) return <Loading />;
 

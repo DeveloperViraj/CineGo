@@ -9,6 +9,8 @@ import {
   listAdmins,
   grantAdmin,
   revokeAdmin,
+  demoElevate,
+  demoCreateShow,
 } from '../Control/Admincontrol.js';
 import { protectAdmin, protectOwner, protectUser } from '../Middleware/Auth.js';
 
@@ -27,5 +29,9 @@ adminRouter.post('/revoke', protectOwner, revokeAdmin);
 adminRouter.get('/dashboarddata', protectAdmin, adminDashboarddata);
 adminRouter.get('/getallshows', protectAdmin, getallshows);
 adminRouter.get('/getallbookings', protectAdmin, getbookings);
+
+// demo: passcode elevate + sandboxed create
+adminRouter.post('/demo-elevate', protectUser, demoElevate);
+adminRouter.post('/demo-show', protectUser, demoCreateShow);
 
 export default adminRouter;
