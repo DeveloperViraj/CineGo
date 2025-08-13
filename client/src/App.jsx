@@ -17,7 +17,7 @@ import { SignIn, useUser } from '@clerk/clerk-react';
 import Loading from './components/Loading';
 import AdminAccess from './pages/admin/AdminAccess';
 import Demo from './pages/demo';                      // ← NEW (public demo page)
-import GlobalDemoButton from './components/GlobalDemoButton'; // ← NEW (floating button)
+
 
 const App = () => {
   const { user, isLoaded } = useUser();
@@ -27,9 +27,6 @@ const App = () => {
     <>
       <Toaster />
       {!isAdminPanel && <Navbar />}
-
-      {/* neat floating button at top-right (only on user-facing pages) */}
-      {!isAdminPanel && <GlobalDemoButton />}
 
       <Routes>
         <Route path="/" element={<Home />} />
