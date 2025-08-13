@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MenuIcon, SearchIcon, TicketPlus, XIcon } from "lucide-react";
+import {
+  MenuIcon,
+  SearchIcon,
+  TicketPlus,
+  XIcon,
+  ShieldCheck,
+  FlaskConical
+} from "lucide-react";
 import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
 import { useAppContext } from "../context/Appcontext";
+
+const DEMO = import.meta.env.VITE_DEMO_MODE === "1";
 
 const Navbar = () => {
   const { isAdmin } = useAppContext();
@@ -47,30 +56,70 @@ const Navbar = () => {
           className="min-md:hidden absolute top-6 right-6 w-8 h-8 cursor-pointer"
           onClick={() => setIsOpen(false)}
         />
-        <Link to="/" onClick={() => { scrollTo(0, 0); setIsOpen(false); }} className="hover:text-primary">Home</Link>
-        <Link to="/movies" onClick={() => { scrollTo(0, 0); setIsOpen(false); }} className="hover:text-primary">Movies</Link>
+        <Link
+          to="/"
+          onClick={() => {
+            scrollTo(0, 0);
+            setIsOpen(false);
+          }}
+          className="hover:text-primary"
+        >
+          Home
+        </Link>
+        <Link
+          to="/movies"
+          onClick={() => {
+            scrollTo(0, 0);
+            setIsOpen(false);
+          }}
+          className="hover:text-primary"
+        >
+          Movies
+        </Link>
 
         {isAdmin === true && (
-          <Link to="/admin" onClick={() => { scrollTo(0, 0); setIsOpen(false); }} className="text-primary">
+          <Link
+            to="/admin"
+            onClick={() => {
+              scrollTo(0, 0);
+              setIsOpen(false);
+            }}
+            className="text-primary"
+          >
             Dashboard
           </Link>
         )}
 
         {isAdmin === false && user && (
-          <Link to="/favourites" onClick={() => { scrollTo(0, 0); setIsOpen(false); }} className="hover:text-primary">
+          <Link
+            to="/favourites"
+            onClick={() => {
+              scrollTo(0, 0);
+              setIsOpen(false);
+            }}
+            className="hover:text-primary"
+          >
             Favourites
           </Link>
         )}
 
         {user && (
-          <Link to="/my-bookings" onClick={() => { scrollTo(0, 0); setIsOpen(false); }} className="hover:text-primary">
+          <Link
+            to="/my-bookings"
+            onClick={() => {
+              scrollTo(0, 0);
+              setIsOpen(false);
+            }}
+            className="hover:text-primary"
+          >
             Bookings
           </Link>
         )}
       </div>
 
-      {/* right actions: search icon + auth */}
+      {/* right actions: search icon + demo/admin icon + auth */}
       <div className="flex items-center gap-4">
+        {/* Search */}
         <button
           aria-label="Search"
           onClick={() => setShowSearch(true)}
@@ -79,6 +128,23 @@ const Navbar = () => {
           <SearchIcon className="w-6 h-6" />
         </button>
 
+        {/* Admin / Demo indicator (right of search) */}
+        {(isAdmin || (DEMO && true)) && (
+          <button
+            aria-label={isAdmin ? "Open admin panel" : "Try admin demo"}
+            title={isAdmin ? "Open admin panel" : "Try admin demo"}
+            onClick={() => navigate(isAdmin ? "/admin" : "/demo")}
+            className="p-2 rounded-full hover:bg-white/10 focus:outline-none"
+          >
+            {isAdmin ? (
+              <ShieldCheck className="w-6 h-6" />
+            ) : (
+              <FlaskConical className="w-6 h-6" />
+            )}
+          </button>
+        )}
+
+        {/* Auth */}
         {!user ? (
           <button
             onClick={openSignIn}
@@ -106,7 +172,7 @@ const Navbar = () => {
         />
       </div>
 
-      {/* lightweight search overlay (appears only when clicked) */}
+      {/* lightweight search overlay */}
       {showSearch && (
         <div
           className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[2px] flex items-start justify-center pt-24"
