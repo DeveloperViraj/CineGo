@@ -133,7 +133,11 @@ const Navbar = () => {
           <button
             aria-label={isAdmin ? "Open admin panel" : "Try admin demo"}
             title={isAdmin ? "Open admin panel" : "Try admin demo"}
-            onClick={() => navigate(isAdmin ? "/admin" : "/demo")}
+            onClick={() => {
+              if (isAdmin) return navigate("/admin");
+              if (!user) return openSignIn({ afterSignInUrl: "/demo" });
+              navigate("/demo");
+            }}
             className="p-2 rounded-full hover:bg-white/10 focus:outline-none"
           >
             {isAdmin ? (
@@ -142,7 +146,7 @@ const Navbar = () => {
               <FlaskConical className="w-6 h-6" />
             )}
           </button>
-        )}
+          )}
 
         {/* Auth */}
         {!user ? (
