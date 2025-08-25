@@ -1,4 +1,4 @@
-// Routes/adminrouter.js
+// server/Routes/adminrouter.js
 import express from 'express';
 import {
   adminDashboarddata,
@@ -30,8 +30,10 @@ adminRouter.get('/dashboarddata', protectAdmin, adminDashboarddata);
 adminRouter.get('/getallshows', protectAdmin, getallshows);
 adminRouter.get('/getallbookings', protectAdmin, getbookings);
 
-// demo: passcode elevate + sandboxed create
+// demo: elevation endpoint for non-admin sandbox users (kept as-is)
 adminRouter.post('/demo-elevate', protectUser, demoElevate);
-adminRouter.post('/demo-show', protectUser, demoCreateShow);
+
+// IMPORTANT: only admins can create demo shows; attachDemoFlag will auto-elevate them
+adminRouter.post('/demo-show', protectAdmin, demoCreateShow);
 
 export default adminRouter;
