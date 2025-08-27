@@ -1,4 +1,4 @@
-// Control/Admincontrol.js
+// server/Control/Admincontrol.js
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
 import User from "../models/User.js";
@@ -120,7 +120,6 @@ export const adminDashboarddata = async (req, res) => {
   }
 };
 
-
 export const getallshows = async (req, res) => {
   try {
     const real = await Show.find({ showDateTime: { $gte: new Date() } })
@@ -159,6 +158,7 @@ export const getbookings = async (_req, res) => {
   }
 };
 
+// ---------- demo helpers ----------
 export const demoElevate = async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -179,6 +179,7 @@ export const demoElevate = async (req, res) => {
   }
 };
 
+// ---------- create show (admin => public, demo => private) ----------
 export const demoCreateShow = async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -191,31 +192,32 @@ export const demoCreateShow = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid payload" });
     }
 
-    // Who is calling?
+    // who is calling?
     const me = await clerkClient.users.getUser(userId);
-    const isDemo = req.isDemo === true || me?.privateMetadata?.demo === true;
-    const isAdmin = me?.privateMetadata?.role === "admin";
+    const isAdmin = me?.privateMetadata?.role === "admin";                     // <-- check admin first
+    const isDemo  = req.isDemo === true || me?.privateMetadata?.demo === true; // demo flag
 
-    // We need a Movie doc to reference (by _id string)
-    const movieRef = await ensureMovieByTmdb(movieId, fallback); // throws if TMDB key missing/invalid
+    // Ensure referenced Movie exists and get its _id (string)
+    const movieRef = await ensureMovieByTmdb(movieId, fallback);
 
-    // Build docs
-    const docs = showsInput.map(({ date, time }) => ({
+    // Base docs
+    const baseDocs = showsInput.map(({ date, time }) => ({
       movie: String(movieRef),
       showDateTime: new Date(`${date}T${time}:00`),
       showprice: Number(showprice),
       occupiedSeats: {},
-      ...(isDemo ? { isDemo: true, demoOwner: userId } : {}),
     }));
 
-    // Write to the right collection
-    let created;
-    if (isDemo) {
-      created = await DemoShow.insertMany(docs);
-      return res.json({ success: true, mode: "demo", count: created.length, shows: created });
-    } else if (isAdmin) {
-      created = await Show.insertMany(docs);
+    // Admins write public (to "shows"), demo users write private (to "demoshows")
+    if (isAdmin) {
+      const created = await Show.insertMany(baseDocs);
       return res.json({ success: true, mode: "public", count: created.length, shows: created });
+    }
+
+    if (isDemo) {
+      const demoDocs = baseDocs.map(d => ({ ...d, isDemo: true, demoOwner: userId }));
+      const created = await DemoShow.insertMany(demoDocs);
+      return res.json({ success: true, mode: "demo", count: created.length, shows: created });
     }
 
     return res.status(403).json({ success: false, message: "Not allowed" });
@@ -224,4 +226,3 @@ export const demoCreateShow = async (req, res) => {
     return res.status(500).json({ success: false, message: e.message || "Failed to create show" });
   }
 };
-
