@@ -4,6 +4,7 @@ import Show from "../models/Show.js";
 import User from "../models/User.js";
 import { clerkClient, getAuth } from "@clerk/express";
 import DemoShow from "../models/DemoShow.js";
+import { ensureMovieByTmdb } from "../lib/ensureMovie.js";
 
 // Helper
 const primaryEmailOf = (u) =>
@@ -188,13 +189,18 @@ export const demoCreateShow = async (req, res) => {
       return res.status(403).json({ success: false, message: "Demo only" });
     }
 
-    const { movieId, showsInput = [], showprice } = req.body || {};
+    // NOTE: movieId here is the TMDB id coming from your UI
+    const { movieId, showsInput = [], showprice, fallback = {} } = req.body || {};
     if (!movieId || !Array.isArray(showsInput) || !showprice) {
       return res.status(400).json({ success: false, message: "Invalid payload" });
     }
 
+    // 1) Ensure a Movie exists for this TMDB id, get Movie._id (string)
+    const movieRef = await ensureMovieByTmdb(movieId, fallback);
+
+    // 2) Create demo shows referencing the Movie._id (not the tmdbId)
     const docs = showsInput.map(({ date, time }) => ({
-      movie: String(movieId),
+      movie: String(movieRef),                                      // <-- IMPORTANT
       showDateTime: new Date(`${date}T${time}:00`),
       showprice: Number(showprice),
       occupiedSeats: {},
