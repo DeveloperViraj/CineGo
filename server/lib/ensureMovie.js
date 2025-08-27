@@ -1,22 +1,19 @@
 // server/lib/ensureMovie.js
-import axios from "axios";
 import mongoose from "mongoose";
+import axios from "axios";
 import Movie from "../models/Movie.js";
 
 /**
- * Ensure a Movie doc exists for a given TMDB id.
- * - Stores tmdbId as a STRING (consistent with your current data).
- * - Returns Movie._id (string, since your schema uses _id: String).
+ * Ensure a Movie exists for a TMDB id.
+ * - Movie._id is a STRING (your schema).
+ * - Movie.tmdbId is a STRING (unique+sparse).
+ * Returns the Movie._id (string).
  */
 export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
-  if (!tmdbId) throw new Error("tmdbId is required");
-  const idStr = String(tmdbId);
+  const idStr = String(tmdbId || "").trim();
+  if (!idStr) throw new Error("tmdbId is required");
 
-  // 1) Already have it?
-  const existing = await Movie.findOne({ tmdbId: idStr }).select("_id").lean();
-  if (existing?._id) return existing._id;
-
-  // 2) Try TMDB (best-effort)
+  // Try to fetch details, but don't fail if TMDB is unavailable
   let payload = null;
   try {
     const key = process.env.TMDB_API_KEY;
@@ -28,18 +25,14 @@ export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
       payload = data || null;
     }
   } catch {
-    // ignore; we'll fallback
+    // swallow; we'll fall back to minimal data
   }
 
-  // 3) Build a valid Movie doc for your schema (all required fields present)
-  const doc = new Movie({
-    _id: new mongoose.Types.ObjectId().toString(),        // your schema uses String _id
+  // Build doc we will insert if missing (must include _id because your schema requires it)
+  const docIfMissing = {
+    _id: new mongoose.Types.ObjectId().toString(), // String _id
     tmdbId: idStr,
-    originalTitle:
-      payload?.title ||
-      payload?.original_title ||
-      fallback.title ||
-      "Untitled",
+    originalTitle: payload?.title || payload?.original_title || fallback.title || "Untitled",
     description: payload?.overview || fallback.description || "",
     primaryImage: payload?.poster_path
       ? `https://image.tmdb.org/t/p/original${payload.poster_path}`
@@ -49,15 +42,21 @@ export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
     releaseDate:
       payload?.release_date ||
       fallback.releaseDate ||
-      new Date().toISOString().slice(0, 10),             // "YYYY-MM-DD"
+      new Date().toISOString().slice(0, 10), // "YYYY-MM-DD"
     original_language: payload?.original_language ? [payload.original_language] : [],
-    genres: (payload?.genres || []).map(g => g?.name).filter(Boolean),
+    genres: (payload?.genres || []).map((g) => g?.name).filter(Boolean),
     casts: [],
     averageRating: Number(payload?.vote_average || 0),
     runtime: Number(payload?.runtime || 0),
     numVotes: Number(payload?.vote_count || 0),
-  });
+  };
 
-  await doc.save();
-  return doc._id;
+  // Atomic upsert: if movie exists, return it; otherwise insert docIfMissing
+  const m = await Movie.findOneAndUpdate(
+    { tmdbId: idStr },
+    { $setOnInsert: docIfMissing, $set: { updatedAt: new Date() } },
+    { upsert: true, new: true, projection: { _id: 1 } }
+  ).lean();
+
+  return m._id; // string
 }
