@@ -1,14 +1,20 @@
-// server/models/DemoShow.js
-import mongoose from "mongoose";
-import Show from "./Show.js";
+import mongoose, { Schema } from "mongoose";
 
-const DemoShowSchema = new mongoose.Schema(
+const demoShowSchema = new Schema(
   {
-    ...Show.schema.obj,                  // reuse same fields
+    // Same fields as Show, but demo flags added
+    movie: { type: String, ref: "Movie", required: true },
+
+    showDateTime: { type: Date, required: true },
+    showprice: { type: Number, required: true },
+
+    occupiedSeats: { type: Object, default: {} },
+
+    // Demo-only flags
     isDemo: { type: Boolean, default: true },
-    demoOwner: { type: String, index: true }, // Clerk userId of the demo user
+    demoOwner: { type: String, required: true, index: true }, // Clerk userId
   },
   { timestamps: true }
 );
 
-export default mongoose.model("DemoShow", DemoShowSchema);
+export default mongoose.models.DemoShow || mongoose.model("DemoShow", demoShowSchema);

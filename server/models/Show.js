@@ -1,19 +1,18 @@
-import mongoose from 'mongoose';
-const { Schema } = mongoose;
+import mongoose, { Schema } from "mongoose";
 
-const showSchema = new Schema({
-  movie: {
-    type: String, // TMDB movie ID as String
-    ref: 'Movie',
-    required: true,
+const showSchema = new Schema(
+  {
+    // IMPORTANT: Movie._id is a String in your app, so the ref must be String too
+    movie: { type: String, ref: "Movie", required: true },
+
+    showDateTime: { type: Date, required: true },
+    showprice: { type: Number, required: true },
+
+    // Keep this as a plain object; it's easier to JSON-serialize
+    occupiedSeats: { type: Object, default: {} },
   },
-  showDateTime: { type: Date, required: true },
-  showprice: { type: Number, required: true },
-  occupiedSeats: {
-    type: Map,
-    of: Boolean,
-    default: {},
-  }
-}, { timestamps: true });
+  { timestamps: true }
+);
 
-export default mongoose.model('Show', showSchema);
+// Guard against OverwriteModelError in serverless/hot reload setups
+export default mongoose.models.Show || mongoose.model("Show", showSchema);
