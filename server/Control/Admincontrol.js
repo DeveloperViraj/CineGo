@@ -182,43 +182,46 @@ export const demoElevate = async (req, res) => {
 export const demoCreateShow = async (req, res) => {
   try {
     const { userId } = getAuth(req);
-    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
-
-    // Allow if either:
-    //  - attachDemoFlag already marked this request demo (passcode or demo metadata), OR
-    //  - user has real admin role
-    let allowed = false;
-    if (req.isDemo) allowed = true;
-    else {
-      const me = await clerkClient.users.getUser(userId);
-      if (me?.privateMetadata?.role === 'admin') allowed = true;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-    if (!allowed) return res.status(403).json({ success: false, message: "Demo only" });
 
-    // NOTE: movieId here is the TMDB id coming from your UI
     const { movieId, showsInput = [], showprice, fallback = {} } = req.body || {};
-    if (!movieId || !Array.isArray(showsInput) || !showprice) {
+    if (!movieId || !Array.isArray(showsInput) || showsInput.length === 0 || !showprice) {
       return res.status(400).json({ success: false, message: "Invalid payload" });
     }
 
-    // 1) Ensure a Movie exists for this TMDB id, get Movie._id (string)
-    const movieRef = await ensureMovieByTmdb(movieId, fallback);
+    // Who is calling?
+    const me = await clerkClient.users.getUser(userId);
+    const isDemo = req.isDemo === true || me?.privateMetadata?.demo === true;
+    const isAdmin = me?.privateMetadata?.role === "admin";
 
-    // 2) Create demo shows referencing the Movie._id (not the tmdbId)
+    // We need a Movie doc to reference (by _id string)
+    const movieRef = await ensureMovieByTmdb(movieId, fallback); // throws if TMDB key missing/invalid
+
+    // Build docs
     const docs = showsInput.map(({ date, time }) => ({
       movie: String(movieRef),
       showDateTime: new Date(`${date}T${time}:00`),
       showprice: Number(showprice),
       occupiedSeats: {},
-      isDemo: true,
-      demoOwner: userId,
+      ...(isDemo ? { isDemo: true, demoOwner: userId } : {}),
     }));
 
-    const created = await DemoShow.insertMany(docs);
-    return res.json({ success: true, count: created.length, shows: created });
+    // Write to the right collection
+    let created;
+    if (isDemo) {
+      created = await DemoShow.insertMany(docs);
+      return res.json({ success: true, mode: "demo", count: created.length, shows: created });
+    } else if (isAdmin) {
+      created = await Show.insertMany(docs);
+      return res.json({ success: true, mode: "public", count: created.length, shows: created });
+    }
+
+    return res.status(403).json({ success: false, message: "Not allowed" });
   } catch (e) {
     console.error("demoCreateShow:", e);
-    return res.status(500).json({ success: false, message: "Failed to create demo show" });
+    return res.status(500).json({ success: false, message: e.message || "Failed to create show" });
   }
 };
 
