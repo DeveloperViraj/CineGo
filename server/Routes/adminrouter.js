@@ -33,7 +33,9 @@ adminRouter.get('/getallbookings', protectAdmin, getbookings);
 // demo: elevation endpoint for non-admin sandbox users (kept as-is)
 adminRouter.post('/demo-elevate', protectUser, demoElevate);
 
-// IMPORTANT: only admins can create demo shows; attachDemoFlag will auto-elevate them
-adminRouter.post('/demo-show', protectAdmin, demoCreateShow);
+// IMPORTANT: demo create-show should be available to signed-in users,
+// the handler will enforce demo permissions (req.isDemo or admin).
+adminRouter.post('/demo-show', protectUser, demoCreateShow);
 
 export default adminRouter;
+

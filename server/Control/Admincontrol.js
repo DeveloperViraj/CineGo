@@ -184,10 +184,16 @@ export const demoCreateShow = async (req, res) => {
     const { userId } = getAuth(req);
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const me = await clerkClient.users.getUser(userId);
-    if (me?.privateMetadata?.demo !== true) {
-      return res.status(403).json({ success: false, message: "Demo only" });
+    // Allow if either:
+    //  - attachDemoFlag already marked this request demo (passcode or demo metadata), OR
+    //  - user has real admin role
+    let allowed = false;
+    if (req.isDemo) allowed = true;
+    else {
+      const me = await clerkClient.users.getUser(userId);
+      if (me?.privateMetadata?.role === 'admin') allowed = true;
     }
+    if (!allowed) return res.status(403).json({ success: false, message: "Demo only" });
 
     // NOTE: movieId here is the TMDB id coming from your UI
     const { movieId, showsInput = [], showprice, fallback = {} } = req.body || {};
@@ -200,7 +206,7 @@ export const demoCreateShow = async (req, res) => {
 
     // 2) Create demo shows referencing the Movie._id (not the tmdbId)
     const docs = showsInput.map(({ date, time }) => ({
-      movie: String(movieRef),                                      // <-- IMPORTANT
+      movie: String(movieRef),
       showDateTime: new Date(`${date}T${time}:00`),
       showprice: Number(showprice),
       occupiedSeats: {},
@@ -215,3 +221,4 @@ export const demoCreateShow = async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to create demo show" });
   }
 };
+
