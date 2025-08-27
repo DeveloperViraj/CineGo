@@ -8,11 +8,13 @@
     "server": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "engines": { "node": ">=18.0.0" },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/express": "^1.7.6",
-    "axios": "^1.10.0",
+    "axios": "^1.11.0",
     "cloudinary": "^2.7.0",
     "cors": "^2.8.5",
     "curl": "^0.1.4",
