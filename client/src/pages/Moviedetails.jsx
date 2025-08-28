@@ -130,21 +130,35 @@ const Moviedetails = () => {
         </div>
       </div>
 
-      <p className='text-gray-300 font-medium text-lg mt-24 mb-4 max-md:text-base max-md:mt-15'>Movie Cast</p>
-      <div id="cast" className='overflow-x-auto no-scrollbar'>
-        <div className="flex items-center gap-5 w-max px-1 pb-2">
-          {movie.casts.slice(0, 12).map((cast, index) => (
-            <div key={index} className="flex flex-col items-center text-center min-w-[80px]">
-              <img
-                src={cast.primaryImage ? cast.primaryImage : '/fallbacks/no-cast.jpg'}
-                alt={cast.name}
-                className='rounded-full h-20 w-20 md:h-24 md:w-24 object-cover'
-              />
-              <p className='text-xs md:text-sm text-white mt-2 font-medium truncate w-20'>{cast.fullName}</p>
-            </div>
-          ))}
+      <p className='text-gray-300 font-medium text-lg mt-24 mb-4 max-md:text-base max-md:mt-15'>
+  Movie Cast
+</p>
+
+<div id="cast" className='overflow-x-auto no-scrollbar'>
+  <div className="flex items-center gap-5 w-max px-1 pb-2">
+    {Array.isArray(movie.casts) && movie.casts.slice(0, 12).map((cast, index) => {
+      const IMG = "https://image.tmdb.org/t/p/w185";
+      const src =
+        cast?.profile ||
+        (cast?.profile_path ? `${IMG}${cast.profile_path}` : "/fallbacks/no-cast.jpg");
+      const name = cast?.name || "Unknown";
+
+      return (
+        <div key={index} className="flex flex-col items-center text-center min-w-[80px]">
+          <img
+            src={src}
+            alt={name}
+            className='rounded-full h-20 w-20 md:h-24 md:w-24 object-cover'
+            onError={(e) => { e.currentTarget.src = '/fallbacks/no-cast.jpg'; }}
+          />
+          <p className='text-xs md:text-sm text-white mt-2 font-medium truncate w-20'>
+            {name}
+          </p>
         </div>
-      </div>
+      );
+    })}
+  </div>
+</div>
 
       <DateSelect datetime={datetime} id={id} />
 
