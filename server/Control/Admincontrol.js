@@ -179,44 +179,41 @@ export const demoElevate = async (req, res) => {
   }
 };
 
-// ---------- create show (admin => public, demo => private) ----------
+// server/Control/Admincontrol.js  (demoCreateShow only)
 export const demoCreateShow = async (req, res) => {
   try {
     const { userId } = getAuth(req);
-    if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-    }
+    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
     const { movieId, showsInput = [], showprice, fallback = {} } = req.body || {};
     if (!movieId || !Array.isArray(showsInput) || showsInput.length === 0 || !showprice) {
       return res.status(400).json({ success: false, message: "Invalid payload" });
     }
 
-    // who is calling?
+    // Who is calling
     const me = await clerkClient.users.getUser(userId);
-    const isAdmin = me?.privateMetadata?.role === "admin";                     // <-- check admin first
-    const isDemo  = req.isDemo === true || me?.privateMetadata?.demo === true; // demo flag
+    const isAdmin   = me?.privateMetadata?.role === "admin";
+    const isDemoUsr = req.isDemo === true || me?.privateMetadata?.demo === true;
 
-    // Ensure referenced Movie exists and get its _id (string)
-    const movieRef = await ensureMovieByTmdb(movieId, fallback);
+    // Ensure there is a Movie with _id = TMDB string
+    const movieRef = await ensureMovieByTmdb(movieId, fallback); // returns String(tmdbId)
 
-    // Base docs
-    const baseDocs = showsInput.map(({ date, time }) => ({
-      movie: String(movieRef),
+    // Build show docs referencing the same String id
+    const docs = showsInput.map(({ date, time }) => ({
+      movie: movieRef,  // <-- TMDB id as string
       showDateTime: new Date(`${date}T${time}:00`),
       showprice: Number(showprice),
       occupiedSeats: {},
+      ...(isDemoUsr ? { isDemo: true, demoOwner: userId } : {}),
     }));
 
-    // Admins write public (to "shows"), demo users write private (to "demoshows")
+    // Admins write PUBLIC, demo users write PRIVATE
     if (isAdmin) {
-      const created = await Show.insertMany(baseDocs);
+      const created = await Show.insertMany(docs);
       return res.json({ success: true, mode: "public", count: created.length, shows: created });
     }
-
-    if (isDemo) {
-      const demoDocs = baseDocs.map(d => ({ ...d, isDemo: true, demoOwner: userId }));
-      const created = await DemoShow.insertMany(demoDocs);
+    if (isDemoUsr) {
+      const created = await DemoShow.insertMany(docs);
       return res.json({ success: true, mode: "demo", count: created.length, shows: created });
     }
 
