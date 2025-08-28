@@ -1,128 +1,89 @@
+// server/lib/ensureMovie.js
 import axios from "axios";
 import Movie from "../models/Movie.js";
 
-/**
- * Ensure a Movie doc exists for a given TMDB id.
- * Supports either:
- *  - v3 key via TMDB_API_KEY (or TMDB_KEY if it looks like v3)
- *  - v4 Bearer token via TMDB_KEY or TMDB_API_KEY (if value starts with 'ey')
- *
- * If no key is available, uses the `fallback` object provided by the caller.
- *
- * @param {string|number} tmdbId
- * @param {object} fallback minimal fields if no TMDB key is configured
- * @returns {Promise<string>} Movie._id (string)
- */
 export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
-  const rawKey =
-    process.env.TMDB_API_KEY ||
-    process.env.TMDB_KEY || // allow your current env name
-    "";
-
-  // Decide auth style
-  const isV4 = rawKey && rawKey.startsWith("ey"); // TMDB v4 token looks like a JWT
-  const hasKey = Boolean(rawKey);
-
-  let data = null;
-
-  if (hasKey) {
-    const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
-    try {
-      if (isV4) {
-        // v4: Bearer token
-        const res = await axios.get(url, {
-          headers: { Authorization: `Bearer ${rawKey}` },
-          params: { language: "en-US" },
-        });
-        data = res.data;
-      } else {
-        // v3: api_key query param
-        const res = await axios.get(url, {
-          params: { api_key: rawKey, language: "en-US" },
-        });
-        data = res.data;
-      }
-    } catch (e) {
-      // If TMDB call fails but we have a fallback, we'll use it below
-      if (!fallback || !fallback.originalTitle) {
-        throw new Error(
-          `TMDB fetch failed and no fallback provided: ${e.response?.status || e.message}`
-        );
-      }
-    }
-  } else {
-    // No key at all → must have fallback
-    if (!fallback || !fallback.originalTitle) {
+  const rawKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || "";
+  const isV4 = rawKey.startsWith("ey");
+  if (!rawKey) {
+    if (!fallback.originalTitle) {
       throw new Error("TMDB_API_KEY missing and no fallback provided");
     }
   }
 
-  // Map TMDB (or fallback) → our schema
-  const mapped = mapToMovieDoc(tmdbId, data, fallback);
+  let details = null;
+  let videos = null;
+  let credits = null;
 
-  // Upsert into our Movies (note: your Movie._id is a string)
+  if (rawKey) {
+    const headers = isV4 ? { Authorization: `Bearer ${rawKey}` } : {};
+    const params = isV4 ? { language: "en-US" } : { api_key: rawKey, language: "en-US" };
+
+    try {
+      // run all requests in parallel
+      const [d, v, c] = await Promise.all([
+        axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}`, { headers, params }),
+        axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/videos`, { headers, params }),
+        axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/credits`, { headers, params }),
+      ]);
+      details = d.data;
+      videos = v.data;
+      credits = c.data;
+    } catch (e) {
+      if (!fallback.originalTitle) {
+        throw new Error(`TMDB fetch failed: ${e.response?.status || e.message}`);
+      }
+    }
+  }
+
+  const mapped = mapToMovieDoc(tmdbId, details, videos, credits, fallback);
+
   const upserted = await Movie.findOneAndUpdate(
     { _id: String(tmdbId) },
     { $set: mapped },
     { upsert: true, new: true }
   ).lean();
 
-  return upserted._id; // string
+  return upserted._id;
 }
 
-function mapToMovieDoc(tmdbId, tmdb, fallback = {}) {
-  const title =
-    tmdb?.title ||
-    tmdb?.original_title ||
-    fallback.originalTitle ||
-    "Untitled";
-
-  const posterPath =
-    tmdb?.poster_path ||
-    (fallback.primaryImage?.startsWith("/")
-      ? fallback.primaryImage
-      : null);
+function mapToMovieDoc(tmdbId, details, videos, credits, fallback) {
+  const title = details?.title || details?.original_title || fallback.originalTitle || "Untitled";
 
   const posterUrl =
-    fallback.primaryImage ||
-    (posterPath ? `https://image.tmdb.org/t/p/w780${posterPath}` : "");
+    details?.poster_path
+      ? `https://image.tmdb.org/t/p/w780${details.poster_path}`
+      : fallback.primaryImage || "";
 
-  const release =
-    tmdb?.release_date || fallback.releaseDate || "2025-01-01";
+  // pick official trailer if exists
+  const trailerObj = videos?.results?.find(
+    (v) => v.type === "Trailer" && v.site === "YouTube"
+  );
+  const trailerUrl = trailerObj ? `https://www.youtube.com/watch?v=${trailerObj.key}` : "";
+
+  // map top 10 cast
+  const castArr = credits?.cast
+    ? credits.cast.slice(0, 10).map((c) => ({
+        name: c.name,
+        character: c.character,
+        profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+      }))
+    : fallback.casts || [];
 
   return {
-    _id: String(tmdbId), // you designed _id to be the TMDB id string
+    _id: String(tmdbId),
     originalTitle: title,
-    description:
-      tmdb?.overview || fallback.description || "No description.",
-    primaryImage: posterUrl || "",
+    description: details?.overview || fallback.description || "No description.",
+    primaryImage: posterUrl,
     thumbnails: posterUrl ? [posterUrl] : [],
-    trailer: "",
-
-    releaseDate: release,
-
-    original_language: tmdb?.spoken_languages
-      ? tmdb.spoken_languages.map((l) => l.english_name || l.name)
-      : fallback.original_language || [],
-
-    genres: tmdb?.genres
-      ? tmdb.genres.map((g) => g.name)
-      : fallback.genres || [],
-
-    casts: fallback.casts || [],
-
-    averageRating:
-      typeof tmdb?.vote_average === "number"
-        ? tmdb.vote_average
-        : fallback.averageRating || 0,
-
-    runtime:
-      tmdb?.runtime || fallback.runtime || 0,
-
-    numVotes:
-      typeof tmdb?.vote_count === "number"
-        ? tmdb.vote_count
-        : fallback.numVotes || 0,
+    trailer: trailerUrl,
+    releaseDate: details?.release_date || fallback.releaseDate || "2025-01-01",
+    original_language: details?.spoken_languages?.map((l) => l.english_name) || [],
+    genres: details?.genres?.map((g) => g.name) || [],
+    casts: castArr,
+    averageRating: details?.vote_average || 0,
+    runtime: details?.runtime || 0,
+    numVotes: details?.vote_count || 0,
   };
 }
 
