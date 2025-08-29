@@ -8,7 +8,7 @@ import Movie from "../models/Movie.js";
 
 export const inngest = new Inngest({
         id: "movie-ticket-booking",
-        eventKey: process.env.INGEST_API_KEY,  // 👈 Add this
+        eventKey: process.env.INGEST_API_KEY,  
 });
 
 const userCreated = inngest.createFunction(
@@ -72,7 +72,7 @@ const releaseSeatsandDeletebooking = inngest.createFunction(
 
 export const cleanupOldData = inngest.createFunction(
   { id: "cleanup-old-bookings-shows" },
-  { cron: "0 0 1 1,7 *" }, // Runs at 00:00 on Jan 1 and Jul 1
+  { cron: "0 0 1 1,7 *" }, 
   async ({ step }) => {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);

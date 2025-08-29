@@ -3,7 +3,6 @@ import { clerkClient, getAuth } from "@clerk/express";
 import Booking from "../models/Booking.js";
 import Movie from "../models/Movie.js";
 
-// get the bookings
 export const getUserbookings = async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -16,7 +15,6 @@ export const getUserbookings = async (req, res) => {
   }
 };
 
-// Update favorites
 export const updateUserfavorites = async (req, res) => {
   try {
     const { movieId } = req.body;
@@ -40,7 +38,6 @@ export const updateUserfavorites = async (req, res) => {
   }
 };
 
-// Get favorites
 export const getfavorites = async (req, res) => {
   try {
     const { userId } = getAuth(req);

@@ -4,7 +4,7 @@ import {
   getmovie,
   getnowplayingMovies,
   addshow,
-  searchShows, // make sure this exists in Control/Showcontrol.js
+  searchShows,
 } from '../Control/Showcontrol.js';
 import { protectAdmin } from '../Middleware/Auth.js';
 
@@ -13,7 +13,7 @@ const router = express.Router();
 // Public
 router.get('/getmovies', getmovies);
 router.get('/getmovie/:movieId', getmovie);
-router.get('/search', searchShows); // /api/show/search?q=...
+router.get('/search', searchShows); 
 
 // Admin
 router.get('/nowplaying', protectAdmin, getnowplayingMovies);

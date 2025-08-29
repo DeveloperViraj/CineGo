@@ -47,19 +47,17 @@ function mapToMovieDoc(tmdbId, details, videos, credits, fallback) {
     ? `https://image.tmdb.org/t/p/w780${details.poster_path}`
     : (fallback.primaryImage || "");
 
-  // Prefer official YouTube Trailer; keep BOTH url and key to satisfy different UIs
   const trailerObj = videos?.results?.find(v => v.type === "Trailer" && v.site === "YouTube");
   const trailerKey = trailerObj?.key || "";
   const trailerUrl = trailerKey ? `https://www.youtube.com/watch?v=${trailerKey}` : "";
 
-  // Cast: keep BOTH profile_path (TMDB raw) and profile (full URL)
   const castArr = credits?.cast
     ? credits.cast.slice(0, 10).map(c => ({
         id: c.id,
         name: c.name,
         character: c.character,
-        profile_path: c.profile_path || null,                       // <— what many UIs use
-        profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null, // full URL too
+        profile_path: c.profile_path || null,                       
+        profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null, 
       }))
     : (fallback.casts || []);
 
@@ -69,8 +67,8 @@ function mapToMovieDoc(tmdbId, details, videos, credits, fallback) {
     description: details?.overview || fallback.description || "No description.",
     primaryImage: posterUrl,
     thumbnails: posterUrl ? [posterUrl] : [],
-    trailer: trailerUrl,                 // full URL
-    trailerKey,                          // raw key (if your UI uses an embed component)
+    trailer: trailerUrl,                
+    trailerKey,                          
     releaseDate: details?.release_date || fallback.releaseDate || "2025-01-01",
     original_language: details?.spoken_languages?.map(l => l.english_name) || [],
     genres: details?.genres?.map(g => g.name) || [],

@@ -30,10 +30,9 @@ adminRouter.get('/dashboarddata', protectAdmin, adminDashboarddata);
 adminRouter.get('/getallshows', protectAdmin, getallshows);
 adminRouter.get('/getallbookings', protectAdmin, getbookings);
 
-// demo: elevation endpoint for non-admin sandbox users (kept as-is)
+// demo: elevation endpoint for non-admin sandbox users 
 adminRouter.post('/demo-elevate', protectUser, demoElevate);
 
-// IMPORTANT: demo create-show should be available to signed-in users,
 // the handler will enforce demo permissions (req.isDemo or admin).
 adminRouter.post('/demo-show', protectUser, demoCreateShow);
 

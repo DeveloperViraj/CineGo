@@ -4,7 +4,6 @@ import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
 import { Stripe } from "stripe";
 
-/** Normalize occupiedSeats to an array of taken seat ids */
 function toTakenSeatArray(occ) {
   if (!occ) return [];
   if (occ instanceof Map) {
@@ -14,7 +13,6 @@ function toTakenSeatArray(occ) {
   return Object.entries(occ).filter(([, v]) => !!v).map(([k]) => k);
 }
 
-/** Read a single seat's taken flag from Map or object */
 function getSeat(occ, seat) {
   if (!occ) return false;
   return occ instanceof Map ? !!occ.get(seat) : !!occ[seat];
@@ -28,11 +26,10 @@ function setSeat(showDoc, seat) {
     showDoc.occupiedSeats = showDoc.occupiedSeats || {};
     showDoc.occupiedSeats[seat] = true;
   }
-  // ensure Mongoose persists changes when it's an object
   showDoc.markModified("occupiedSeats");
 }
 
-// ---------------- Availability ----------------
+
 export const checkavailabilty = async (showId, selectedSeats) => {
   try {
     const show = await Show.findById(showId);
@@ -47,7 +44,7 @@ export const checkavailabilty = async (showId, selectedSeats) => {
   }
 };
 
-// ---------------- Booking ----------------
+
 export const createBooking = async (req, res) => {
   try {
     const { userId } = req.auth(); // if your project uses getAuth(req), swap to that
@@ -112,7 +109,6 @@ export const createBooking = async (req, res) => {
   }
 };
 
-// ---------------- Occupied seats for UI ----------------
 export const getoccupiedSeats = async (req, res) => {
   try {
     const { showId } = req.params;

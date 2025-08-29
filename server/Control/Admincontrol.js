@@ -179,7 +179,6 @@ export const demoElevate = async (req, res) => {
   }
 };
 
-// server/Control/Admincontrol.js  (demoCreateShow only)
 export const demoCreateShow = async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -195,19 +194,17 @@ export const demoCreateShow = async (req, res) => {
     const isAdmin   = me?.privateMetadata?.role === "admin";
     const isDemoUsr = req.isDemo === true || me?.privateMetadata?.demo === true;
 
-    // Ensure there is a Movie with _id = TMDB string
+
     const movieRef = await ensureMovieByTmdb(movieId, fallback); // returns String(tmdbId)
 
-    // Build show docs referencing the same String id
     const docs = showsInput.map(({ date, time }) => ({
-      movie: movieRef,  // <-- TMDB id as string
+      movie: movieRef,  
       showDateTime: new Date(`${date}T${time}:00`),
       showprice: Number(showprice),
       occupiedSeats: {},
       ...(isDemoUsr ? { isDemo: true, demoOwner: userId } : {}),
     }));
 
-    // Admins write PUBLIC, demo users write PRIVATE
     if (isAdmin) {
       const created = await Show.insertMany(docs);
       return res.json({ success: true, mode: "public", count: created.length, shows: created });

@@ -6,7 +6,6 @@ import { inngest } from '../Inngest/index.js';
 
 const VERBOSE = process.env.VERBOSE_LOG === '1';
 
-/** GET /api/show/nowplaying (admin) */
 export const getnowplayingMovies = async (_req, res) => {
   try {
     const { data } = await axios.get(
@@ -29,7 +28,7 @@ export const getnowplayingMovies = async (_req, res) => {
   }
 };
 
-/** POST /api/show/add (admin) */
+
 export const addshow = async (req, res) => {
   try {
     const { movieId, showsInput, showprice } = req.body;
@@ -94,7 +93,7 @@ export const addshow = async (req, res) => {
   }
 };
 
-/** GET /api/show/getmovies (public) */
+
 export const getmovies = async (_req, res) => {
   try {
     const shows = await Show.find({ showDateTime: { $gte: new Date() } })
@@ -153,7 +152,7 @@ export const searchShows = async (req, res) => {
 
     const now = new Date();
     let from = new Date(now);
-    let to = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 14); // default next 14 days
+    let to = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 14); 
     let afterMin = null;
     let beforeMin = null;
     let maxPrice = null;
@@ -205,17 +204,14 @@ export const searchShows = async (req, res) => {
     if (afterMatch)  afterMin  = toMinutes(afterMatch[2],  afterMatch[3],  afterMatch[4]);
     if (beforeMatch) beforeMin = toMinutes(beforeMatch[2], beforeMatch[3], beforeMatch[4]);
 
-    // price (₹, rs, inr, or plain number after under/below/near)
     const priceMatch = q.match(/(?:under|below|less\s*than|<=|near)\s*(?:₹|rs\.?|inr)?\s*(\d{2,5})|(?:₹|rs\.?|inr)\s*(\d{2,5})/i);
     if (priceMatch) maxPrice = parseInt(priceMatch[1] || priceMatch[2], 10);
 
-    // DB query
     const cond = { showDateTime: { $gte: from, $lte: to } };
     if (maxPrice != null) cond.showprice = { $lte: maxPrice };
 
     let docs = await Show.find(cond).populate('movie').sort({ showDateTime: 1 }).lean();
 
-    // time-of-day
     docs = docs.filter(s => {
       const dt = new Date(s.showDateTime);
       const mins = dt.getHours() * 60 + dt.getMinutes();
@@ -224,7 +220,6 @@ export const searchShows = async (req, res) => {
       return true;
     });
 
-    // genres
     const knownGenres = [
       'action','adventure','animation','comedy','crime','drama','family','fantasy',
       'history','horror','mystery','romance','science fiction','sci-fi','thriller','war','western'
@@ -238,7 +233,6 @@ export const searchShows = async (req, res) => {
       docs = docs.filter(s => (s.movie?.genres || []).some(gn => set.has(gn)));
     }
 
-    // title tokens
     const titleTokens = q
       .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)

@@ -18,7 +18,6 @@ export const protectAdmin = requireAuth(async (req, res, next) => {
   }
 });
 
-// Only the owner(s) listed in OWNER_EMAIL
 export const protectOwner = requireAuth(async (req, res, next) => {
   try {
     const { userId } = getAuth(req);

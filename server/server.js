@@ -17,7 +17,6 @@ import { attachDemoFlag } from './Middleware/Demo.js';
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ── toggles ────────────────────────────────────────────────────────────────────
 const VERBOSE = process.env.VERBOSE_LOG === '1';
 const TRIPWIRE = process.env.DEBUG_DOUBLE_SEND === '1';
 
@@ -33,7 +32,6 @@ if (VERBOSE) {
   });
 }
 
-// optional double-send tripwire
 if (TRIPWIRE) {
   app.use((req, res, next) => {
     let sent = false;
@@ -47,12 +45,11 @@ if (TRIPWIRE) {
 
 await mongoConnect();
 
-// Stripe webhook (raw body) — keep this BEFORE express.json()
 app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebhooks);
 
 // CORS (allow-list) + JSON
 const allowed = new Set([
-  process.env.FRONTEND_URL,       // e.g., https://yourapp.vercel.app
+  process.env.FRONTEND_URL,
   'http://localhost:5173',
   'http://localhost:5176',
 ].filter(Boolean));

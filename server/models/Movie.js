@@ -3,8 +3,8 @@ import mongoose, { Schema } from "mongoose";
 
 const movieSchema = new Schema(
   {
-    _id: { type: String, required: true },         // you already use String ids
-    tmdbId: { type: String, index: true, unique: true, sparse: true }, // <- NEW
+    _id: { type: String, required: true },        
+    tmdbId: { type: String, index: true, unique: true, sparse: true }, 
     originalTitle: { type: String, required: true },
     description: { type: String, required: true },
     primaryImage: { type: String, required: true },
