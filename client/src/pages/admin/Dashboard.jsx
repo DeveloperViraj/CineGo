@@ -48,7 +48,7 @@ const Dashboard = () => {
 
   const dashboardCards = [
     { title: 'Total Bookings', value: dashboardData.totalBookings, icon: ChartLineIcon },
-    { title: 'Total Revenue', value: `${currency} ${dashboardData.totalRevenue}`, icon: IndianRupeeIcon },
+    { title: 'Total Revenue', value: `${dashboardData.totalRevenue}`, icon: IndianRupeeIcon },
     { title: 'Active Shows', value: dashboardData.activeshows.length, icon: PlayCircleIcon },
     { title: 'Total Users', value: dashboardData.totalUsers, icon: UsersIcon }
   ];
