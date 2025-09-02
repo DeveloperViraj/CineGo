@@ -108,23 +108,37 @@ const sendbookingEmail = inngest.createFunction(
     const { bookingId } = event.data;
 
     try {
+      console.log(`📩 sendbookingEmail triggered for bookingId=${bookingId}`);
+
+      // Fetch booking + populate show + movie
       const booking = await Booking.findById(bookingId).populate({
         path: "show",
-        populate: {
-          path: "movie",
-          model: "Movie",
-        },
+        populate: { path: "movie", model: "Movie" },
       });
 
-      if (!booking || !booking.show || !booking.show.movie) {
-        console.warn(`Booking or related data missing for booking ID ${bookingId}`);
+      console.log("🔍 Booking fetched:", JSON.stringify(booking, null, 2));
+
+      if (!booking) {
+        console.warn(`❌ Booking not found for ID ${bookingId}`);
+        return;
+      }
+
+      if (!booking.show) {
+        console.warn(`❌ Show missing for booking ${bookingId}`);
+        return;
+      }
+
+      if (!booking.show.movie) {
+        console.warn(`❌ Movie missing for show ${booking.show._id}`);
         return;
       }
 
       // Fetch user separately
       const user = await User.findById(booking.user);
+      console.log("🔍 User fetched:", user);
+
       if (!user) {
-        console.warn(`User not found in DB for ID ${booking.user}`);
+        console.warn(`❌ User not found for ID ${booking.user}`);
         return;
       }
 
@@ -135,6 +149,8 @@ const sendbookingEmail = inngest.createFunction(
       const showDate = new Date(booking.show.showDateTime).toLocaleDateString("en-US", {
         timeZone: "Asia/Kolkata",
       });
+
+      console.log(`✅ Sending email to ${user.email} for movie=${booking.show.movie.originalTitle}`);
 
       await sendEmail({
         to: user.email,
@@ -167,8 +183,10 @@ const sendbookingEmail = inngest.createFunction(
         </div>`,
       });
 
+      console.log("✅ Email sent successfully!");
+
     } catch (error) {
-      console.error("Error in sendbookingEmail function:", error);
+      console.error("🔥 Error in sendbookingEmail function:", error);
     }
   }
 );
