@@ -3,8 +3,7 @@ import mongoose, { Schema } from "mongoose";
 
 const movieSchema = new Schema(
   {
-    _id: { type: String, required: true },        
-    tmdbId: { type: String, index: true, unique: true, sparse: true }, 
+    tmdbId: { type: String, index: true, unique: true, sparse: true },
     originalTitle: { type: String, required: true },
     description: { type: String, required: true },
     primaryImage: { type: String, required: true },
@@ -20,5 +19,6 @@ const movieSchema = new Schema(
   },
   { timestamps: true }
 );
+
 
 export default mongoose.model("Movie", movieSchema);
