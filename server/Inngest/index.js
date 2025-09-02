@@ -102,51 +102,51 @@ export const cleanupOldData = inngest.createFunction(
 
 
 const sendbookingEmail = inngest.createFunction(
-    { id: "send-booking-confirmation-mail" },
-    { event: 'app/show.booked' },
-    async ({ event }) => {
-        const { bookingId } = event.data;
+  { id: "send-booking-confirmation-mail" },
+  { event: "app/show.booked" },
+  async ({ event }) => {
+    const { bookingId } = event.data;
 
-        try {
-            const booking = await Booking.findById(bookingId)
-            .populate({
-                path: "show",
-                populate: { path: "movie", model: "Movie" }
-            });
+    try {
+      const booking = await Booking.findById(bookingId).populate({
+        path: "show",
+        populate: {
+          path: "movie",
+          model: "Movie",
+        },
+      });
 
-            if (!booking || !booking.show || !booking.show.movie) {
-            console.warn(`Booking or related data missing for booking ID ${bookingId}`);
-            return;
-            }
+      if (!booking || !booking.show || !booking.show.movie) {
+        console.warn(`Booking or related data missing for booking ID ${bookingId}`);
+        return;
+      }
 
-            // fetch user separately (from your DB if exists, else Clerk API)
-            const user = await User.findById(booking.user);
+      // Fetch user separately
+      const user = await User.findById(booking.user);
+      if (!user) {
+        console.warn(`User not found in DB for ID ${booking.user}`);
+        return;
+      }
 
-            if (!user) {
-            console.warn(`User not found in DB for ID ${booking.user}`);
-            return;
-            }
+      const showTime = new Date(booking.show.showDateTime).toLocaleTimeString("en-US", {
+        timeZone: "Asia/Kolkata",
+      });
 
+      const showDate = new Date(booking.show.showDateTime).toLocaleDateString("en-US", {
+        timeZone: "Asia/Kolkata",
+      });
 
-            const showTime = new Date(booking.show.showDateTime).toLocaleTimeString('en-US', {
-                timeZone: 'Asia/Kolkata'
-            });
-
-            const showDate = new Date(booking.show.showDateTime).toLocaleDateString('en-US', {
-                timeZone: 'Asia/Kolkata'
-            });
-
-            await sendEmail({
-                to: booking.user.email,
-                subject: `Payment confirmation: '${booking.show.movie.originalTitle}' booked!`,
-                body: `
+      await sendEmail({
+        to: user.email,
+        subject: `Payment confirmation: '${booking.show.movie.originalTitle}' booked!`,
+        body: `
         <div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
           <div style="background-color: #7b2cbf; color: white; padding: 20px; text-align: center;">
             <h1 style="margin: 0;">🎟️ QuickShow Booking Confirmed!</h1>
           </div>
 
           <div style="padding: 24px; font-size: 16px; color: #333;">
-            <h2 style="margin-top: 0;">Hi ${booking.user.name},</h2>
+            <h2 style="margin-top: 0;">Hi ${user.name},</h2>
             <p>Your booking for <strong style="color: #7b2cbf;">"${booking.show.movie.originalTitle}"</strong> is confirmed.</p>
 
             <p>
@@ -154,7 +154,7 @@ const sendbookingEmail = inngest.createFunction(
               <strong>Time:</strong> ${showTime}
             </p>
             <p><strong>Booking ID:</strong> <span style="color: #7b2cbf;">${booking._id}</span></p>
-            <p><strong>Seats:</strong> ${booking.bookedseats?.join(', ') || 'N/A'}</p>
+            <p><strong>Seats:</strong> ${booking.bookedseats?.join(", ") || "N/A"}</p>
 
             <p>🎬 Enjoy the show and don’t forget to grab your popcorn!</p>
           </div>
@@ -164,14 +164,15 @@ const sendbookingEmail = inngest.createFunction(
             <p style="margin: 0;">Thanks for booking with us!<br>— The QuickShow Team</p>
             <p style="margin: 4px 0 0;">📍 Visit us: <a href="https://quickshow-ecru.vercel.app" style="color: #7b2cbf; text-decoration: none;">QuickShow</a></p>
           </div>
-        </div>`
-            });
+        </div>`,
+      });
 
-        } catch (error) {
-            console.error("Error in sendbookingEmail function:", error);
-        }
+    } catch (error) {
+      console.error("Error in sendbookingEmail function:", error);
     }
+  }
 );
+
 
 const sendNewMovieEmail = inngest.createFunction(
     { id: 'send-new-movie-notification' },
