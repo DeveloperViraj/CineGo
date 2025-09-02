@@ -11,6 +11,8 @@ export const inngest = new Inngest({
         eventKey: process.env.INGEST_API_KEY,  
 });
 
+console.log("👉 Loaded INGEST_API_KEY:", process.env.INGEST_API_KEY?.slice(0, 10) + "...");
+
 const userCreated = inngest.createFunction(
     { id: 'create-user' },
     { event: 'clerk/user.created' },
