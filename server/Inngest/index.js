@@ -108,18 +108,25 @@ const sendbookingEmail = inngest.createFunction(
         const { bookingId } = event.data;
 
         try {
-            const booking = await Booking.findById(bookingId).populate({
-                path: 'show',
-                populate: {
-                    path: 'movie',
-                    model: 'Movie'
-                }
-            }).populate('user');
+            const booking = await Booking.findById(bookingId)
+            .populate({
+                path: "show",
+                populate: { path: "movie", model: "Movie" }
+            });
 
-            if (!booking || !booking.user || !booking.show || !booking.show.movie) {
-                console.warn(`Booking or related data missing for booking ID ${bookingId}`);
-                return;
+            if (!booking || !booking.show || !booking.show.movie) {
+            console.warn(`Booking or related data missing for booking ID ${bookingId}`);
+            return;
             }
+
+            // fetch user separately (from your DB if exists, else Clerk API)
+            const user = await User.findById(booking.user);
+
+            if (!user) {
+            console.warn(`User not found in DB for ID ${booking.user}`);
+            return;
+            }
+
 
             const showTime = new Date(booking.show.showDateTime).toLocaleTimeString('en-US', {
                 timeZone: 'Asia/Kolkata'
