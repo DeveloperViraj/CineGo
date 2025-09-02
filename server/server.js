@@ -13,41 +13,19 @@ import userRouter from './Routes/userrouter.js';
 import { stripeWebhooks } from './Control/Stripewebhooks.js';
 import { attachDemoFlag } from './Middleware/Demo.js';
 
-
 const app = express();
 const port = process.env.PORT || 3000;
 
-const VERBOSE = process.env.VERBOSE_LOG === '1';
-const TRIPWIRE = process.env.DEBUG_DOUBLE_SEND === '1';
-
-// optional request logger
-if (VERBOSE) {
-  app.use((req, res, next) => {
-    const start = Date.now();
-    res.on('finish', () => {
-      const ms = Date.now() - start;
-      console.log(`[RES] ${res.statusCode} ${req.method} ${req.originalUrl} ${ms}ms`);
-    });
-    next();
-  });
-}
-
-if (TRIPWIRE) {
-  app.use((req, res, next) => {
-    let sent = false;
-    const j = res.json.bind(res);
-    const s = res.send.bind(res);
-    res.json = (...a) => { if (sent) console.warn(`[DOUBLE-SEND?] ${req.method} ${req.originalUrl} via res.json`); sent = true; return j(...a); };
-    res.send = (...a) => { if (sent) console.warn(`[DOUBLE-SEND?] ${req.method} ${req.originalUrl} via res.send`);  sent = true; return s(...a); };
-    next();
-  });
-}
-
+// --- Connect DB
 await mongoConnect();
 
+// --- Stripe webhook BEFORE body parsers
 app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebhooks);
 
-// CORS (allow-list) + JSON
+// --- JSON parser for everything else
+app.use(express.json());
+
+// --- CORS allow-list
 const allowed = new Set([
   process.env.FRONTEND_URL,
   'http://localhost:5173',
@@ -62,14 +40,11 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json());
-
-// Clerk
+// --- Clerk
 app.use(clerkMiddleware());
 app.use(attachDemoFlag);
 
-
-// (optional) auto-promote admin
+// --- Auto-promote admin (optional)
 app.use(async (req, _res, next) => {
   try {
     const { userId } = getAuth(req);
@@ -87,25 +62,30 @@ app.use(async (req, _res, next) => {
         privateMetadata: { ...user.privateMetadata, role: 'admin' }
       });
     }
-  } catch { /* swallow */ }
+  } catch {
+    // swallow errors
+  }
   next();
 });
 
+// --- Health check
 app.get('/', (_req, res) => res.send('Server is live!'));
 
-// Routers
+// --- Inngest route (important for sync!)
 app.use('/api/inngest', serve({ client: inngest, functions }));
+
+// --- API Routers
 app.use('/api/show', showRouter);
 app.use('/api/booking', bookingRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/user', userRouter);
 
-// 404
+// --- 404 handler
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 
-// Error handler
+// --- Global error handler
 app.use((err, req, res, _next) => {
   if (process.env.NODE_ENV !== 'production') console.error('Global error:', err);
   if (res.headersSent) return;
@@ -113,7 +93,7 @@ app.use((err, req, res, _next) => {
 });
 
 app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+  console.log(`🚀 Server listening at http://localhost:${port}`);
 });
 
 export default app;

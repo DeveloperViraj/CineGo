@@ -27,6 +27,7 @@
     "svix": "^1.69.0"
   },
   "devDependencies": {
+    "inngest-cli": "^1.11.10",
     "nodemon": "^3.1.10"
   }
 }
