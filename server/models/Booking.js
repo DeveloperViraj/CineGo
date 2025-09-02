@@ -3,7 +3,7 @@ import { Schema } from "mongoose";
 
 const bookingSchema = new Schema(
   {
-    user: { type: String, required: true, ref: "User" }, // Clerk userId stays string
+    user: { type: String, required: true }, // Clerk userId stays string
     show: { type: mongoose.Schema.Types.ObjectId, required: true, ref: "Show" }, // must be ObjectId
     amount: { type: Number, required: true },
     bookedseats: { type: [String], required: true },
