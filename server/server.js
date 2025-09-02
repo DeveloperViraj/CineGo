@@ -92,6 +92,8 @@ app.use((err, req, res, _next) => {
   res.status(err.status || 500).json({ success: false, message: err.message || 'Server error' });
 });
 
+console.log("👉 INGEST_API_KEY loaded?", !!process.env.INGEST_API_KEY);
+
 app.listen(port, () => {
   console.log(`🚀 Server listening at http://localhost:${port}`);
 });
