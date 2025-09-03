@@ -29,7 +29,6 @@ function setSeat(showDoc, seat) {
   showDoc.markModified("occupiedSeats");
 }
 
-
 export const checkavailabilty = async (showId, selectedSeats) => {
   try {
     const show = await Show.findById(showId);
@@ -43,7 +42,6 @@ export const checkavailabilty = async (showId, selectedSeats) => {
     return false;
   }
 };
-
 
 export const createBooking = async (req, res) => {
   try {
@@ -97,8 +95,15 @@ export const createBooking = async (req, res) => {
     booking.paymentLink = session.url;
     await booking.save();
 
+    // 🔔 Schedule seat release if unpaid
     await inngest.send({
       name: "app/checkpayment",
+      data: { bookingId: booking._id.toString() },
+    });
+
+    // 🔔 Trigger booking confirmation email (even before payment)
+    await inngest.send({
+      name: "app/show.booked",
       data: { bookingId: booking._id.toString() },
     });
 
