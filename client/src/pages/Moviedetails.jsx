@@ -44,7 +44,6 @@ const Moviedetails = () => {
       );
 
       if (data.success) {
-        // 🔁 trigger favourites to refetch wherever needed
         bumpFavorites();
         toast.success(data.message);
       } else {
@@ -74,7 +73,7 @@ const Moviedetails = () => {
         <div className="text-white relative flex flex-col gap-4 max-w-xl">
           <BlurCircle top="0px" left="50px" />
           <p className='text-xl uppercase text-primary font-medium'>
-            {movie.original_language.includes('en') && 'English'}
+            {movie.original_language?.includes('English') && 'English'}
           </p>
           <h1 className='text-4xl font-bold leading-snug'>{movie.originalTitle}</h1>
 
@@ -87,7 +86,7 @@ const Moviedetails = () => {
 
           <p className='text-gray-300 text-sm md:text-base leading-relaxed'>{movie.description}</p>
           <p className='text-sm text-gray-100 font-medium'>
-            {movie.runtime ? timeCalculate(movie.runtime) : ''} • {movie.genres.map((g) => g).join(', ')} • {movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : ''}
+            {movie.runtime ? timeCalculate(movie.runtime) : ''} • {movie.genres.join(', ')} • {movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : ''}
           </p>
 
           <div className="flex flex-wrap gap-4 mt-4 max-md:gap-2">
@@ -131,34 +130,31 @@ const Moviedetails = () => {
       </div>
 
       <p className='text-gray-300 font-medium text-lg mt-24 mb-4 max-md:text-base max-md:mt-15'>
-  Movie Cast
-</p>
+        Movie Cast
+      </p>
 
-<div id="cast" className='overflow-x-auto no-scrollbar'>
-  <div className="flex items-center gap-5 w-max px-1 pb-2">
-    {Array.isArray(movie.casts) && movie.casts.slice(0, 12).map((cast, index) => {
-      const IMG = "https://image.tmdb.org/t/p/w185";
-      const src =
-        cast?.profile ||
-        (cast?.profile_path ? `${IMG}${cast.profile_path}` : "/fallbacks/no-cast.jpg");
-      const name = cast?.name || "Unknown";
+      <div id="cast" className='overflow-x-auto no-scrollbar'>
+        <div className="flex items-center gap-5 w-max px-1 pb-2">
+          {Array.isArray(movie.casts) && movie.casts.slice(0, 12).map((cast, index) => {
+            const src = cast?.primaryImage || '/fallbacks/no-cast.jpg';
+            const name = cast?.fullName || 'Unknown';
 
-      return (
-        <div key={index} className="flex flex-col items-center text-center min-w-[80px]">
-          <img
-            src={src}
-            alt={name}
-            className='rounded-full h-20 w-20 md:h-24 md:w-24 object-cover'
-            onError={(e) => { e.currentTarget.src = '/fallbacks/no-cast.jpg'; }}
-          />
-          <p className='text-xs md:text-sm text-white mt-2 font-medium truncate w-20'>
-            {name}
-          </p>
+            return (
+              <div key={index} className="flex flex-col items-center text-center min-w-[80px]">
+                <img
+                  src={src}
+                  alt={name}
+                  className='rounded-full h-20 w-20 md:h-24 md:w-24 object-cover'
+                  onError={(e) => { e.currentTarget.src = '/fallbacks/no-cast.jpg'; }}
+                />
+                <p className='text-xs md:text-sm text-white mt-2 font-medium truncate w-20'>
+                  {name}
+                </p>
+              </div>
+            );
+          })}
         </div>
-      );
-    })}
-  </div>
-</div>
+      </div>
 
       <DateSelect datetime={datetime} id={id} />
 
