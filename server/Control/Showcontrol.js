@@ -41,6 +41,7 @@ export const getnowplayingMovies = async (_req, res) => {
 // Add a show for a TMDB movie
 export const addshow = async (req, res) => {
   try {
+    console.log("📌 /api/admin/addshow called with body:", req.body);
     const { movieId, showsInput, showprice } = req.body;
     const movieIdStr = String(movieId);
 
@@ -120,11 +121,13 @@ export const addshow = async (req, res) => {
     return res
       .status(200)
       .json({ success: true, message: "Show(s) added successfully." });
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") console.error("addshow:", error);
-    if (!res.headersSent)
-      return res.status(500).json({ success: false, message: error.message });
-  }
+      } catch (error) {
+        console.error("❌ addshow error:", error);   // <-- always log errors now
+        if (!res.headersSent) {
+          return res.status(500).json({ success: false, message: error.message });
+        }
+      }
+
 };
 
 // Fetch all movies with upcoming shows
