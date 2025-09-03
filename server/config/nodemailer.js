@@ -1,25 +1,26 @@
-// server/config/nodemailer.js
 import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp.gmail.com",
-  port: process.env.EMAIL_PORT || 465,
-  secure: process.env.EMAIL_PORT == 465, // true for 465, false for 587
+  host: "smtp.gmail.com",
+  port: 465,             // 465 works best for Gmail App Password
+  secure: true,          // must be true for port 465
   auth: {
-    user: process.env.EMAIL_USER, // your Gmail address or SMTP user
-    pass: process.env.EMAIL_PASS, // Gmail App Password or SMTP key
+    user: process.env.EMAIL_USER, // your gmail
+    pass: process.env.EMAIL_PASS, // your 16-char App Password
+  },
+  tls: {
+    rejectUnauthorized: false, // prevent TLS errors on Render
   },
 });
 
 const sendEmail = async ({ to, subject, body }) => {
   try {
     const info = await transporter.sendMail({
-      from: `"QuickShow 🎬" <${process.env.EMAIL_USER}>`, // sender must match your verified account
+      from: `"QuickShow 🎬" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html: body,
     });
-
     console.log("✅ Email sent:", info.messageId);
     return info;
   } catch (err) {
