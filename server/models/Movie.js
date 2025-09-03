@@ -2,7 +2,7 @@ import mongoose, { Schema } from "mongoose";
 
 const movieSchema = new Schema(
   {
-    tmdbId: { type: String, index: true, unique: true, sparse: true },
+    tmdbId: { type: String, index: true, unique: true, sparse: true }, // TMDB movie ID
     originalTitle: { type: String, required: true },
     description: { type: String, required: true },
     primaryImage: { type: String, required: true },

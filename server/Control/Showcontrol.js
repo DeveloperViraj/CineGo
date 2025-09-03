@@ -1,16 +1,22 @@
 // Control/Showcontrol.js
-import axios from 'axios';
-import Movie from '../models/Movie.js';
-import Show from '../models/Show.js';
-import { inngest } from '../Inngest/index.js';
+import axios from "axios";
+import Movie from "../models/Movie.js";
+import Show from "../models/Show.js";
+import { inngest } from "../Inngest/index.js";
 
-const VERBOSE = process.env.VERBOSE_LOG === '1';
+const VERBOSE = process.env.VERBOSE_LOG === "1";
 
+// Fetch now-playing movies from TMDB
 export const getnowplayingMovies = async (_req, res) => {
   try {
     const { data } = await axios.get(
-      'https://api.themoviedb.org/3/movie/now_playing?language=en-US&page=1',
-      { headers: { Authorization: `Bearer ${process.env.TMDB_KEY}`, accept: 'application/json' } }
+      "https://api.themoviedb.org/3/movie/now_playing?language=en-US&page=1",
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.TMDB_KEY}`,
+          accept: "application/json",
+        },
+      }
     );
 
     const movies = (data?.results ?? []).slice(0, 10).map((m) => ({
@@ -18,56 +24,78 @@ export const getnowplayingMovies = async (_req, res) => {
       title: m.title,
       vote_average: m.vote_average,
       vote_count: m.vote_count,
-      poster: m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : '',
+      poster: m.poster_path
+        ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
+        : "",
     }));
 
     return res.status(200).json({ success: true, movies });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') console.error('getnowplayingMovies:', error);
-    if (!res.headersSent) return res.status(500).json({ success: false, message: error.message });
+    if (process.env.NODE_ENV !== "production")
+      console.error("getnowplayingMovies:", error);
+    if (!res.headersSent)
+      return res
+        .status(500)
+        .json({ success: false, message: error.message });
   }
 };
 
-
+// Add a show for a TMDB movie
 export const addshow = async (req, res) => {
   try {
     const { movieId, showsInput, showprice } = req.body;
     const movieIdStr = String(movieId);
 
-    let movie = await Movie.findById(movieIdStr);
+    // 🔑 Search movie by tmdbId instead of _id
+    let movie = await Movie.findOne({ tmdbId: movieIdStr });
+
     if (!movie) {
+      // fetch movie details from TMDB
       const movieResp = await axios.get(
         `https://api.themoviedb.org/3/movie/${movieIdStr}`,
         { headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` } }
       );
       const m = movieResp.data;
 
+      // fetch credits
       const creditsResp = await axios.get(
         `https://api.themoviedb.org/3/movie/${movieIdStr}/credits`,
         { headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` } }
       );
-      const casts = (creditsResp.data?.cast ?? []).slice(0, 12).map((c) => ({
-        fullName: c.name,
-        primaryImage: c.profile_path ? `https://image.tmdb.org/t/p/w500${c.profile_path}` : null,
-      }));
+      const casts = (creditsResp.data?.cast ?? [])
+        .slice(0, 12)
+        .map((c) => ({
+          fullName: c.name,
+          primaryImage: c.profile_path
+            ? `https://image.tmdb.org/t/p/w500${c.profile_path}`
+            : null,
+        }));
 
+      // fetch trailer
       const videosResp = await axios.get(
         `https://api.themoviedb.org/3/movie/${movieIdStr}/videos`,
         { headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` } }
       );
       const trailerData = (videosResp.data?.results ?? []).find(
-        (v) => v.site === 'YouTube' && v.type === 'Trailer'
+        (v) => v.site === "YouTube" && v.type === "Trailer"
       );
-      const trailer = trailerData ? `https://www.youtube.com/watch?v=${trailerData.key}` : null;
+      const trailer = trailerData
+        ? `https://www.youtube.com/watch?v=${trailerData.key}`
+        : null;
 
+      // create movie entry
       movie = await Movie.create({
-        _id: String(m.id),
-        originalTitle: m.original_title || m.title || 'Untitled',
-        description: m.overview || '',
-        primaryImage: m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : '',
-        thumbnails: m.backdrop_path ? [`https://image.tmdb.org/t/p/w500${m.backdrop_path}`] : [],
+        tmdbId: String(m.id),
+        originalTitle: m.original_title || m.title || "Untitled",
+        description: m.overview || "",
+        primaryImage: m.poster_path
+          ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
+          : "",
+        thumbnails: m.backdrop_path
+          ? [`https://image.tmdb.org/t/p/w500${m.backdrop_path}`]
+          : [],
         trailer,
-        releaseDate: m.release_date || '',
+        releaseDate: m.release_date || "",
         original_language: [m.original_language].filter(Boolean),
         genres: (m.genres || []).map((g) => g.name),
         casts,
@@ -77,6 +105,7 @@ export const addshow = async (req, res) => {
       });
     }
 
+    // create shows
     const docs = (showsInput ?? []).map(({ date, time }) => ({
       movie: movie._id,
       showDateTime: new Date(`${date}T${time}`),
@@ -85,19 +114,27 @@ export const addshow = async (req, res) => {
     }));
     if (docs.length) await Show.insertMany(docs);
 
-    await inngest.send({ name: 'app/show.added', data: { movieId: movie._id } });
-    return res.status(200).json({ success: true, message: 'Show(s) added successfully.' });
+    // trigger email notification
+    await inngest.send({ name: "app/show.added", data: { movieId: movie._id } });
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Show(s) added successfully." });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') console.error('addshow:', error);
-    if (!res.headersSent) return res.status(500).json({ success: false, message: error.message });
+    if (process.env.NODE_ENV !== "production")
+      console.error("addshow:", error);
+    if (!res.headersSent)
+      return res
+        .status(500)
+        .json({ success: false, message: error.message });
   }
 };
 
-
+// Fetch all movies with upcoming shows
 export const getmovies = async (_req, res) => {
   try {
     const shows = await Show.find({ showDateTime: { $gte: new Date() } })
-      .populate('movie')
+      .populate("movie")
       .sort({ showDateTime: 1 })
       .lean();
 
@@ -113,58 +150,75 @@ export const getmovies = async (_req, res) => {
       }
     }
 
-    if (VERBOSE) console.log(`[RES] getmovies -> ${uniqueMovies.length} unique`);
+    if (VERBOSE)
+      console.log(`[RES] getmovies -> ${uniqueMovies.length} unique`);
     return res.status(200).json({ success: true, shows: uniqueMovies });
   } catch (err) {
-    if (process.env.NODE_ENV !== 'production') console.error('getmovies error:', err);
-    if (!res.headersSent) return res.status(500).json({ success: false, message: err.message });
+    if (process.env.NODE_ENV !== "production")
+      console.error("getmovies error:", err);
+    if (!res.headersSent)
+      return res
+        .status(500)
+        .json({ success: false, message: err.message });
   }
 };
 
-/** GET /api/show/getmovie/:movieId (public) */
+// Fetch single movie and its shows
 export const getmovie = async (req, res) => {
   try {
     const movieIdStr = String(req.params.movieId);
 
     const [movie, shows] = await Promise.all([
-      Movie.findById(movieIdStr).lean(),
+      Movie.findOne({ tmdbId: movieIdStr }).lean(),
       Show.find({ movie: movieIdStr, showDateTime: { $gte: new Date() } }).lean(),
     ]);
 
     const datetime = {};
     for (const s of shows) {
-      const date = new Date(s.showDateTime).toISOString().split('T')[0];
+      const date = new Date(s.showDateTime).toISOString().split("T")[0];
       if (!datetime[date]) datetime[date] = [];
       datetime[date].push({ time: s.showDateTime, showId: s._id });
     }
 
     return res.status(200).json({ success: true, movie, datetime });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') console.error('getmovie:', error);
-    if (!res.headersSent) return res.status(500).json({ success: false, message: error.message });
+    if (process.env.NODE_ENV !== "production")
+      console.error("getmovie:", error);
+    if (!res.headersSent)
+      return res
+        .status(500)
+        .json({ success: false, message: error.message });
   }
 };
 
-/** GET /api/show/search?q=... */
+// Search shows (by date, time, genre, price, keywords)
 export const searchShows = async (req, res) => {
   try {
-    const q = String(req.query.q || '').toLowerCase().trim();
+    const q = String(req.query.q || "").toLowerCase().trim();
 
     const now = new Date();
     let from = new Date(now);
-    let to = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 14); 
+    let to = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 14);
     let afterMin = null;
     let beforeMin = null;
     let maxPrice = null;
 
-    const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+    const dayNames = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
     const toMinutes = (h, m, ap) => {
       let hh = parseInt(h, 10);
       const mm = m ? parseInt(m, 10) : 0;
       if (ap) {
         const a = ap.toLowerCase();
-        if (a === 'pm' && hh !== 12) hh += 12;
-        if (a === 'am' && hh === 12) hh = 0;
+        if (a === "pm" && hh !== 12) hh += 12;
+        if (a === "am" && hh === 12) hh = 0;
       }
       return hh * 60 + mm;
     };
@@ -173,80 +227,138 @@ export const searchShows = async (req, res) => {
     const isoDateMatch = q.match(/\b(\d{4}-\d{2}-\d{2})\b/);
     if (isoDateMatch) {
       const d = new Date(`${isoDateMatch[1]}T00:00:00`);
-      from = new Date(d); from.setHours(0,0,0,0);
-      to = new Date(d);   to.setHours(23,59,59,999);
+      from = new Date(d);
+      from.setHours(0, 0, 0, 0);
+      to = new Date(d);
+      to.setHours(23, 59, 59, 999);
     } else {
       // relative words
-      const dayMatch = q.match(/\b(today|tomorrow|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+      const dayMatch = q.match(
+        /\b(today|tomorrow|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/
+      );
       if (dayMatch) {
         const word = dayMatch[1].toLowerCase();
-        if (word === 'today') {
-          from = new Date(); from.setHours(0,0,0,0);
-          to = new Date();   to.setHours(23,59,59,999);
-        } else if (word === 'tomorrow') {
-          const d = new Date(); d.setDate(d.getDate() + 1);
-          from = new Date(d); from.setHours(0,0,0,0);
-          to = new Date(d);   to.setHours(23,59,59,999);
+        if (word === "today") {
+          from = new Date();
+          from.setHours(0, 0, 0, 0);
+          to = new Date();
+          to.setHours(23, 59, 59, 999);
+        } else if (word === "tomorrow") {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          from = new Date(d);
+          from.setHours(0, 0, 0, 0);
+          to = new Date(d);
+          to.setHours(23, 59, 59, 999);
         } else {
           const target = dayNames.indexOf(word);
           const d = new Date();
           const diff = (target - d.getDay() + 7) % 7;
           d.setDate(d.getDate() + diff);
-          from = new Date(d); from.setHours(0,0,0,0);
-          to = new Date(d);   to.setHours(23,59,59,999);
+          from = new Date(d);
+          from.setHours(0, 0, 0, 0);
+          to = new Date(d);
+          to.setHours(23, 59, 59, 999);
         }
       }
     }
 
     // times
-    const afterMatch  = q.match(/\b(after|post|>=)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-    const beforeMatch = q.match(/\b(before|<=)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-    if (afterMatch)  afterMin  = toMinutes(afterMatch[2],  afterMatch[3],  afterMatch[4]);
-    if (beforeMatch) beforeMin = toMinutes(beforeMatch[2], beforeMatch[3], beforeMatch[4]);
+    const afterMatch = q.match(
+      /\b(after|post|>=)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i
+    );
+    const beforeMatch = q.match(
+      /\b(before|<=)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i
+    );
+    if (afterMatch)
+      afterMin = toMinutes(afterMatch[2], afterMatch[3], afterMatch[4]);
+    if (beforeMatch)
+      beforeMin = toMinutes(beforeMatch[2], beforeMatch[3], beforeMatch[4]);
 
-    const priceMatch = q.match(/(?:under|below|less\s*than|<=|near)\s*(?:₹|rs\.?|inr)?\s*(\d{2,5})|(?:₹|rs\.?|inr)\s*(\d{2,5})/i);
-    if (priceMatch) maxPrice = parseInt(priceMatch[1] || priceMatch[2], 10);
+    const priceMatch = q.match(
+      /(?:under|below|less\s*than|<=|near)\s*(?:₹|rs\.?|inr)?\s*(\d{2,5})|(?:₹|rs\.?|inr)\s*(\d{2,5})/i
+    );
+    if (priceMatch)
+      maxPrice = parseInt(priceMatch[1] || priceMatch[2], 10);
 
     const cond = { showDateTime: { $gte: from, $lte: to } };
     if (maxPrice != null) cond.showprice = { $lte: maxPrice };
 
-    let docs = await Show.find(cond).populate('movie').sort({ showDateTime: 1 }).lean();
+    let docs = await Show.find(cond)
+      .populate("movie")
+      .sort({ showDateTime: 1 })
+      .lean();
 
-    docs = docs.filter(s => {
+    docs = docs.filter((s) => {
       const dt = new Date(s.showDateTime);
       const mins = dt.getHours() * 60 + dt.getMinutes();
-      if (afterMin  != null && mins < afterMin)  return false;
+      if (afterMin != null && mins < afterMin) return false;
       if (beforeMin != null && mins > beforeMin) return false;
       return true;
     });
 
     const knownGenres = [
-      'action','adventure','animation','comedy','crime','drama','family','fantasy',
-      'history','horror','mystery','romance','science fiction','sci-fi','thriller','war','western'
+      "action",
+      "adventure",
+      "animation",
+      "comedy",
+      "crime",
+      "drama",
+      "family",
+      "fantasy",
+      "history",
+      "horror",
+      "mystery",
+      "romance",
+      "science fiction",
+      "sci-fi",
+      "thriller",
+      "war",
+      "western",
     ];
-    const wanted = knownGenres.filter(g => q.includes(g));
-    const normalize = g => (g === 'sci-fi' || g === 'science fiction')
-      ? 'Science Fiction'
-      : g.replace(/\b\w/g, c => c.toUpperCase());
+    const wanted = knownGenres.filter((g) => q.includes(g));
+    const normalize = (g) =>
+      g === "sci-fi" || g === "science fiction"
+        ? "Science Fiction"
+        : g.replace(/\b\w/g, (c) => c.toUpperCase());
     if (wanted.length) {
       const set = new Set(wanted.map(normalize));
-      docs = docs.filter(s => (s.movie?.genres || []).some(gn => set.has(gn)));
+      docs = docs.filter((s) =>
+        (s.movie?.genres || []).some((gn) => set.has(gn))
+      );
     }
 
     const titleTokens = q
-      .replace(/[^\w\s]/g, ' ')
+      .replace(/[^\w\s]/g, " ")
       .split(/\s+/)
-      .filter(w => w.length > 2 && ![
-        'movie','movies','after','before','today','tomorrow','this','near','under','below','less','than','pm','am'
-      ].includes(w));
+      .filter(
+        (w) =>
+          w.length > 2 &&
+          ![
+            "movie",
+            "movies",
+            "after",
+            "before",
+            "today",
+            "tomorrow",
+            "this",
+            "near",
+            "under",
+            "below",
+            "less",
+            "than",
+            "pm",
+            "am",
+          ].includes(w)
+      );
     if (titleTokens.length) {
-      docs = docs.filter(s => {
-        const title = (s.movie?.originalTitle || '').toLowerCase();
-        return titleTokens.every(tok => title.includes(tok));
+      docs = docs.filter((s) => {
+        const title = (s.movie?.originalTitle || "").toLowerCase();
+        return titleTokens.every((tok) => title.includes(tok));
       });
     }
 
-    const results = docs.map(s => ({
+    const results = docs.map((s) => ({
       showId: s._id,
       showDateTime: s.showDateTime,
       showprice: s.showprice,
@@ -257,13 +369,18 @@ export const searchShows = async (req, res) => {
       success: true,
       count: results.length,
       applied: {
-        from, to, afterMin, beforeMin, maxPrice,
+        from,
+        to,
+        afterMin,
+        beforeMin,
+        maxPrice,
         genres: wanted.map(normalize),
       },
       results,
     });
   } catch (e) {
-    if (process.env.NODE_ENV !== 'production') console.error('searchShows:', e);
+    if (process.env.NODE_ENV !== "production")
+      console.error("searchShows:", e);
     res.status(500).json({ success: false, message: e.message });
   }
 };
