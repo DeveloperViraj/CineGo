@@ -35,9 +35,7 @@ export const getnowplayingMovies = async (_req, res) => {
     if (process.env.NODE_ENV !== "production")
       console.error("getnowplayingMovies:", error);
     if (!res.headersSent)
-      return res
-        .status(500)
-        .json({ success: false, message: error.message });
+      return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -47,7 +45,7 @@ export const addshow = async (req, res) => {
     const { movieId, showsInput, showprice } = req.body;
     const movieIdStr = String(movieId);
 
-    // 🔑 Search movie by tmdbId instead of _id
+    // Search movie by tmdbId instead of _id
     let movie = await Movie.findOne({ tmdbId: movieIdStr });
 
     if (!movie) {
@@ -66,10 +64,10 @@ export const addshow = async (req, res) => {
       const casts = (creditsResp.data?.cast ?? [])
         .slice(0, 12)
         .map((c) => ({
-          fullName: c.name,
-          primaryImage: c.profile_path
+          name: c.name,
+          profile: c.profile_path
             ? `https://image.tmdb.org/t/p/w500${c.profile_path}`
-            : null,
+            : "/fallbacks/no-cast.jpg",
         }));
 
       // fetch trailer
@@ -82,7 +80,7 @@ export const addshow = async (req, res) => {
       );
       const trailer = trailerData
         ? `https://www.youtube.com/watch?v=${trailerData.key}`
-        : null;
+        : "";
 
       // create movie entry
       movie = await Movie.create({
@@ -122,12 +120,9 @@ export const addshow = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Show(s) added successfully." });
   } catch (error) {
-    if (process.env.NODE_ENV !== "production")
-      console.error("addshow:", error);
+    if (process.env.NODE_ENV !== "production") console.error("addshow:", error);
     if (!res.headersSent)
-      return res
-        .status(500)
-        .json({ success: false, message: error.message });
+      return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -158,12 +153,9 @@ export const getmovies = async (_req, res) => {
     if (process.env.NODE_ENV !== "production")
       console.error("getmovies error:", err);
     if (!res.headersSent)
-      return res
-        .status(500)
-        .json({ success: false, message: err.message });
+      return res.status(500).json({ success: false, message: err.message });
   }
 };
-
 
 // Fetch single movie and its shows
 export const getmovie = async (req, res) => {
@@ -203,15 +195,11 @@ export const getmovie = async (req, res) => {
 
     return res.status(200).json({ success: true, movie, datetime });
   } catch (error) {
-    if (process.env.NODE_ENV !== "production")
-      console.error("getmovie:", error);
+    if (process.env.NODE_ENV !== "production") console.error("getmovie:", error);
     if (!res.headersSent)
-      return res
-        .status(500)
-        .json({ success: false, message: error.message });
+      return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // Search shows (by date, time, genre, price, keywords)
 export const searchShows = async (req, res) => {
@@ -300,8 +288,7 @@ export const searchShows = async (req, res) => {
     const priceMatch = q.match(
       /(?:under|below|less\s*than|<=|near)\s*(?:₹|rs\.?|inr)?\s*(\d{2,5})|(?:₹|rs\.?|inr)\s*(\d{2,5})/i
     );
-    if (priceMatch)
-      maxPrice = parseInt(priceMatch[1] || priceMatch[2], 10);
+    if (priceMatch) maxPrice = parseInt(priceMatch[1] || priceMatch[2], 10);
 
     const cond = { showDateTime: { $gte: from, $lte: to } };
     if (maxPrice != null) cond.showprice = { $lte: maxPrice };
@@ -401,8 +388,7 @@ export const searchShows = async (req, res) => {
       results,
     });
   } catch (e) {
-    if (process.env.NODE_ENV !== "production")
-      console.error("searchShows:", e);
+    if (process.env.NODE_ENV !== "production") console.error("searchShows:", e);
     res.status(500).json({ success: false, message: e.message });
   }
 };
