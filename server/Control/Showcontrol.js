@@ -1,4 +1,3 @@
-// Control/Showcontrol.js
 import axios from "axios";
 import Movie from "../models/Movie.js";
 import Show from "../models/Show.js";
@@ -42,7 +41,6 @@ export const getnowplayingMovies = async (_req, res) => {
 // Add a show for a TMDB movie
 export const addshow = async (req, res) => {
   try {
-
     const { movieId, showsInput, showprice } = req.body;
     const movieIdStr = String(movieId);
 
@@ -58,8 +56,8 @@ export const addshow = async (req, res) => {
         headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
       }),
     ]);
-    console.log("🎬 TMDB videos for", movieIdStr, ":", videosResp.data);
 
+    console.log("🎬 TMDB videos for", movieIdStr, ":", videosResp.data?.results);
 
     const m = movieResp.data;
 
@@ -70,6 +68,7 @@ export const addshow = async (req, res) => {
         : "/fallbacks/no-cast.jpg",
     }));
 
+    // ✅ Pick best trailer-like video
     const trailerData = (videosResp.data?.results ?? []).find(
       (v) =>
         v.site === "YouTube" &&
@@ -79,7 +78,7 @@ export const addshow = async (req, res) => {
       ? `https://www.youtube.com/watch?v=${trailerData.key}`
       : "";
 
-    // ✅ Upsert movie (ensures trailer + cast are always updated)
+    // ✅ Upsert movie (force refresh of trailer + cast always)
     const movie = await Movie.findOneAndUpdate(
       { tmdbId: movieIdStr },
       {
@@ -93,11 +92,11 @@ export const addshow = async (req, res) => {
           thumbnails: m.backdrop_path
             ? [`https://image.tmdb.org/t/p/w500${m.backdrop_path}`]
             : [],
-          trailer,
+          trailer, // <-- always refresh
           releaseDate: m.release_date || "",
           original_language: [m.original_language].filter(Boolean),
           genres: (m.genres || []).map((g) => g.name),
-          casts,
+          casts, // <-- always refresh
           averageRating: m.vote_average ?? null,
           runtime: m.runtime ?? null,
           numVotes: m.vote_count ?? null,
