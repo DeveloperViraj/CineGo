@@ -1,4 +1,3 @@
-// server/models/Movie.js
 import mongoose, { Schema } from "mongoose";
 
 const movieSchema = new Schema(
@@ -20,5 +19,4 @@ const movieSchema = new Schema(
   { timestamps: true }
 );
 
-
-export default mongoose.model("Movie", movieSchema);
+export default mongoose.models.Movie || mongoose.model("Movie", movieSchema);
