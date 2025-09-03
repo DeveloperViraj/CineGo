@@ -1,27 +1,29 @@
+// server/config/nodemailer.js
 import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com",
-  port: 587,
-  secure: false, // required for Brevo with port 587
+  host: process.env.EMAIL_HOST || "smtp.gmail.com",
+  port: process.env.EMAIL_PORT || 465,
+  secure: process.env.EMAIL_PORT == 465, // true for 465, false for 587
   auth: {
-    user: process.env.SMTP_USER, // your Brevo SMTP login
-    pass: process.env.SMTP_PASS, // your Brevo SMTP key
+    user: process.env.EMAIL_USER, // your Gmail address or SMTP user
+    pass: process.env.EMAIL_PASS, // Gmail App Password or SMTP key
   },
 });
 
 const sendEmail = async ({ to, subject, body }) => {
   try {
     const info = await transporter.sendMail({
-      from: `"CineGo" <${process.env.SENDER_EMAIL}>`, // must be a verified Brevo sender
+      from: `"QuickShow 🎬" <${process.env.EMAIL_USER}>`, // sender must match your verified account
       to,
       subject,
       html: body,
     });
-    console.log("Message sent:", info.messageId);
+
+    console.log("✅ Email sent:", info.messageId);
     return info;
   } catch (err) {
-    console.error("❌ Email send error:", err);
+    console.error("❌ Email send error:", err.message || err);
     throw err;
   }
 };
