@@ -42,6 +42,7 @@ export const getnowplayingMovies = async (_req, res) => {
 // Add a show for a TMDB movie
 export const addshow = async (req, res) => {
   try {
+
     const { movieId, showsInput, showprice } = req.body;
     const movieIdStr = String(movieId);
 
@@ -57,6 +58,8 @@ export const addshow = async (req, res) => {
         headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
       }),
     ]);
+    console.log("🎬 TMDB videos for", movieIdStr, ":", videosResp.data);
+
 
     const m = movieResp.data;
 
