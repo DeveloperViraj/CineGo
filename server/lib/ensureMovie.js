@@ -37,7 +37,7 @@ export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
   const mapped = mapToMovieDoc(tmdbId, details, videos, credits, fallback);
 
   const upserted = await Movie.findOneAndUpdate(
-    { tmdbId: String(tmdbId) },   // ✅ query by tmdbId
+    { tmdbId: String(tmdbId) },
     { $set: mapped },
     { upsert: true, new: true }
   ).lean();
@@ -56,17 +56,16 @@ function mapToMovieDoc(tmdbId, details, videos, credits, fallback) {
     ? `https://image.tmdb.org/t/p/w780${details.poster_path}`
     : fallback.primaryImage || "";
 
-  // ✅ More robust trailer fetch: Trailer OR Teaser OR Clip
+  // ✅ Robust trailer fetch
   const trailerObj = videos?.results?.find(
     (v) =>
       v.site === "YouTube" &&
-      ["Trailer", "Teaser", "Clip"].includes(v.type)
+      ["Trailer", "Teaser", "Clip", "Featurette"].includes(v.type)
   );
   const trailerUrl = trailerObj?.key
     ? `https://www.youtube.com/watch?v=${trailerObj.key}`
     : "";
 
-  // ✅ Unified cast schema
   const castArr = credits?.cast
     ? credits.cast.slice(0, 12).map((c) => ({
         name: c.name,
@@ -82,7 +81,7 @@ function mapToMovieDoc(tmdbId, details, videos, credits, fallback) {
     description: details?.overview || fallback.description || "No description.",
     primaryImage: posterUrl,
     thumbnails: posterUrl ? [posterUrl] : [],
-    trailer: trailerUrl,   // ✅ now handles teaser/clip too
+    trailer: trailerUrl,
     releaseDate: details?.release_date || fallback.releaseDate || "2025-01-01",
     original_language:
       details?.spoken_languages?.map((l) => l.english_name) ||

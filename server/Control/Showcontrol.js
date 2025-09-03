@@ -45,64 +45,63 @@ export const addshow = async (req, res) => {
     const { movieId, showsInput, showprice } = req.body;
     const movieIdStr = String(movieId);
 
-    // Search movie by tmdbId instead of _id
-    let movie = await Movie.findOne({ tmdbId: movieIdStr });
+    // Always fetch latest details (refresh trailers + casts)
+    const [movieResp, creditsResp, videosResp] = await Promise.all([
+      axios.get(`https://api.themoviedb.org/3/movie/${movieIdStr}`, {
+        headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
+      }),
+      axios.get(`https://api.themoviedb.org/3/movie/${movieIdStr}/credits`, {
+        headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
+      }),
+      axios.get(`https://api.themoviedb.org/3/movie/${movieIdStr}/videos`, {
+        headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
+      }),
+    ]);
 
-    if (!movie) {
-      // fetch movie details from TMDB
-      const movieResp = await axios.get(
-        `https://api.themoviedb.org/3/movie/${movieIdStr}`,
-        { headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` } }
-      );
-      const m = movieResp.data;
+    const m = movieResp.data;
 
-      // fetch credits
-      const creditsResp = await axios.get(
-        `https://api.themoviedb.org/3/movie/${movieIdStr}/credits`,
-        { headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` } }
-      );
-      const casts = (creditsResp.data?.cast ?? [])
-        .slice(0, 12)
-        .map((c) => ({
-          name: c.name,
-          profile: c.profile_path
-            ? `https://image.tmdb.org/t/p/w500${c.profile_path}`
-            : "/fallbacks/no-cast.jpg",
-        }));
+    const casts = (creditsResp.data?.cast ?? []).slice(0, 12).map((c) => ({
+      name: c.name,
+      profile: c.profile_path
+        ? `https://image.tmdb.org/t/p/w500${c.profile_path}`
+        : "/fallbacks/no-cast.jpg",
+    }));
 
-      // fetch trailer
-      const videosResp = await axios.get(
-        `https://api.themoviedb.org/3/movie/${movieIdStr}/videos`,
-        { headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` } }
-      );
-      const trailerData = (videosResp.data?.results ?? []).find(
-        (v) => v.site === "YouTube" && v.type === "Trailer"
-      );
-      const trailer = trailerData
-        ? `https://www.youtube.com/watch?v=${trailerData.key}`
-        : "";
+    const trailerData = (videosResp.data?.results ?? []).find(
+      (v) =>
+        v.site === "YouTube" &&
+        ["Trailer", "Teaser", "Clip", "Featurette"].includes(v.type)
+    );
+    const trailer = trailerData
+      ? `https://www.youtube.com/watch?v=${trailerData.key}`
+      : "";
 
-      // create movie entry
-      movie = await Movie.create({
-        tmdbId: String(m.id),
-        originalTitle: m.original_title || m.title || "Untitled",
-        description: m.overview || "",
-        primaryImage: m.poster_path
-          ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
-          : "",
-        thumbnails: m.backdrop_path
-          ? [`https://image.tmdb.org/t/p/w500${m.backdrop_path}`]
-          : [],
-        trailer,
-        releaseDate: m.release_date || "",
-        original_language: [m.original_language].filter(Boolean),
-        genres: (m.genres || []).map((g) => g.name),
-        casts,
-        averageRating: m.vote_average ?? null,
-        runtime: m.runtime ?? null,
-        numVotes: m.vote_count ?? null,
-      });
-    }
+    // ✅ Upsert movie (ensures trailer + cast are always updated)
+    const movie = await Movie.findOneAndUpdate(
+      { tmdbId: movieIdStr },
+      {
+        $set: {
+          tmdbId: String(m.id),
+          originalTitle: m.original_title || m.title || "Untitled",
+          description: m.overview || "",
+          primaryImage: m.poster_path
+            ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
+            : "",
+          thumbnails: m.backdrop_path
+            ? [`https://image.tmdb.org/t/p/w500${m.backdrop_path}`]
+            : [],
+          trailer,
+          releaseDate: m.release_date || "",
+          original_language: [m.original_language].filter(Boolean),
+          genres: (m.genres || []).map((g) => g.name),
+          casts,
+          averageRating: m.vote_average ?? null,
+          runtime: m.runtime ?? null,
+          numVotes: m.vote_count ?? null,
+        },
+      },
+      { upsert: true, new: true }
+    );
 
     // create shows
     const docs = (showsInput ?? []).map(({ date, time }) => ({
@@ -164,12 +163,10 @@ export const getmovie = async (req, res) => {
 
     let movie = null;
 
-    // Case 1: valid Mongo ObjectId
     if (mongoose.Types.ObjectId.isValid(movieIdStr)) {
       movie = await Movie.findById(movieIdStr).lean();
     }
 
-    // Case 2: fallback to tmdbId
     if (!movie) {
       movie = await Movie.findOne({ tmdbId: movieIdStr }).lean();
     }
@@ -180,7 +177,6 @@ export const getmovie = async (req, res) => {
         .json({ success: false, message: "Movie not found" });
     }
 
-    // Fetch shows linked to this movie
     const shows = await Show.find({
       movie: movie._id,
       showDateTime: { $gte: new Date() },
@@ -200,6 +196,7 @@ export const getmovie = async (req, res) => {
       return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // Search shows (by date, time, genre, price, keywords)
 export const searchShows = async (req, res) => {
