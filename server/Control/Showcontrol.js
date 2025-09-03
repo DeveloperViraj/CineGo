@@ -3,6 +3,7 @@ import axios from "axios";
 import Movie from "../models/Movie.js";
 import Show from "../models/Show.js";
 import { inngest } from "../Inngest/index.js";
+import mongoose from "mongoose";
 
 const VERBOSE = process.env.VERBOSE_LOG === "1";
 
@@ -163,15 +164,35 @@ export const getmovies = async (_req, res) => {
   }
 };
 
+
 // Fetch single movie and its shows
 export const getmovie = async (req, res) => {
   try {
     const movieIdStr = String(req.params.movieId);
 
-    const [movie, shows] = await Promise.all([
-      Movie.findOne({ tmdbId: movieIdStr }).lean(),
-      Show.find({ movie: movieIdStr, showDateTime: { $gte: new Date() } }).lean(),
-    ]);
+    let movie = null;
+
+    // Case 1: valid Mongo ObjectId
+    if (mongoose.Types.ObjectId.isValid(movieIdStr)) {
+      movie = await Movie.findById(movieIdStr).lean();
+    }
+
+    // Case 2: fallback to tmdbId
+    if (!movie) {
+      movie = await Movie.findOne({ tmdbId: movieIdStr }).lean();
+    }
+
+    if (!movie) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Movie not found" });
+    }
+
+    // Fetch shows linked to this movie
+    const shows = await Show.find({
+      movie: movie._id,
+      showDateTime: { $gte: new Date() },
+    }).lean();
 
     const datetime = {};
     for (const s of shows) {
@@ -190,6 +211,7 @@ export const getmovie = async (req, res) => {
         .json({ success: false, message: error.message });
   }
 };
+
 
 // Search shows (by date, time, genre, price, keywords)
 export const searchShows = async (req, res) => {
