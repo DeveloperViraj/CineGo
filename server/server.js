@@ -26,11 +26,25 @@ app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebhook
 app.use(express.json());
 
 // --- CORS allow-list
+// --- CORS allow-list
 const allowed = new Set([
   process.env.FRONTEND_URL,
   'http://localhost:5173',
   'http://localhost:5176',
+  'https://cinego-chi.vercel.app',   // ✅ add frontend
 ].filter(Boolean));
+
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin || allowed.has(origin)) {
+      return cb(null, true);
+    }
+    console.warn("❌ Blocked CORS origin:", origin);
+    return cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+
 
 app.use(cors({
   origin(origin, cb) {
