@@ -19,19 +19,19 @@ const port = process.env.PORT || 3000;
 // --- Connect DB
 await mongoConnect();
 
-// --- Stripe webhook (MUST be raw, skip JSON parsing here)
+// --- Stripe webhook (MUST use raw parser, skip JSON middleware here)
 app.post(
   '/api/stripe',
   express.raw({ type: 'application/json' }),
   stripeWebhooks
 );
 
-// --- JSON parser for all other routes
+// --- JSON parser for everything else
 app.use((req, res, next) => {
-  if (req.originalUrl === '/api/stripe') {
-    return next(); // skip JSON parsing for stripe
+  if (req.originalUrl.startsWith('/api/stripe')) {
+    return next(); // don't JSON-parse Stripe requests
   }
-  express.json()(req, res, next);
+  return express.json()(req, res, next);
 });
 
 // --- CORS allow-list
@@ -40,7 +40,7 @@ const allowed = new Set(
     process.env.FRONTEND_URL,
     'http://localhost:5173',
     'http://localhost:5176',
-    'https://cinego-chi.vercel.app', // ✅ add frontend
+    'https://cinego-chi.vercel.app', // ✅ frontend
   ].filter(Boolean)
 );
 
@@ -86,8 +86,8 @@ app.use(async (req, _res, next) => {
         privateMetadata: { ...user.privateMetadata, role: 'admin' },
       });
     }
-  } catch {
-    // swallow errors
+  } catch (err) {
+    console.error('Auto-promote admin error:', err.message);
   }
   next();
 });
@@ -95,7 +95,7 @@ app.use(async (req, _res, next) => {
 // --- Health check
 app.get('/', (_req, res) => res.send('Server is live!'));
 
-// --- Inngest route (important for sync!)
+// --- Inngest route
 app.use('/api/inngest', serve({ client: inngest, functions }));
 
 // --- API Routers
