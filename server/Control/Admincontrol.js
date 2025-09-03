@@ -4,7 +4,8 @@ import Show from "../models/Show.js";
 import User from "../models/User.js";
 import { clerkClient, getAuth } from "@clerk/express";
 import DemoShow from "../models/DemoShow.js";
-import { ensureMovieByTmdb } from "../lib/ensureMovie.js";
+import Movie from "../models/Movie.js";
+import axios from "axios";
 
 // Helper
 const primaryEmailOf = (u) =>
@@ -19,8 +20,7 @@ export const isAdmin = async (req, res) => {
     const user = await clerkClient.users.getUser(userId);
     const isAdmin = user?.privateMetadata?.role === "admin";
     return res.json({ success: true, isAdmin, userId });
-  } catch (error) {
-    console.error("isAdmin error:", error);
+  } catch {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -38,8 +38,7 @@ export const isOwner = async (req, res) => {
       .filter(Boolean);
 
     return res.json({ success: true, isOwner: !!email && owners.includes(email) });
-  } catch (e) {
-    console.error("isOwner error:", e);
+  } catch {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -52,8 +51,7 @@ export const listAdmins = async (_req, res) => {
       .filter(u => u?.privateMetadata?.role === "admin")
       .map(u => ({ id: u.id, email: primaryEmailOf(u), name: u.firstName || u.username || primaryEmailOf(u) }));
     res.json({ success: true, admins });
-  } catch (e) {
-    console.error("listAdmins:", e);
+  } catch {
     res.status(500).json({ success: false, message: "Failed to list admins" });
   }
 };
@@ -69,8 +67,7 @@ export const grantAdmin = async (req, res) => {
 
     await clerkClient.users.updateUser(u.id, { privateMetadata: { ...u.privateMetadata, role: "admin" } });
     res.json({ success: true, message: `Granted admin to ${email}` });
-  } catch (e) {
-    console.error("grantAdmin:", e);
+  } catch {
     res.status(500).json({ success: false, message: "Failed to grant admin" });
   }
 };
@@ -88,8 +85,7 @@ export const revokeAdmin = async (req, res) => {
     delete pm.role;
     await clerkClient.users.updateUser(u.id, { privateMetadata: pm });
     res.json({ success: true, message: `Revoked admin from ${email}` });
-  } catch (e) {
-    console.error("revokeAdmin:", e);
+  } catch {
     res.status(500).json({ success: false, message: "Failed to revoke admin" });
   }
 };
@@ -173,33 +169,60 @@ export const demoElevate = async (req, res) => {
       privateMetadata: { ...me.privateMetadata, role: "admin", demo: true },
     });
     return res.json({ success: true, message: "Demo admin enabled. Refresh the page." });
-  } catch (e) {
-    console.error("demoElevate:", e);
+  } catch {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
+// ✅ Fixed version
 export const demoCreateShow = async (req, res) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const { movieId, showsInput = [], showprice, fallback = {} } = req.body || {};
+    const { movieId, showsInput = [], showprice } = req.body || {};
     if (!movieId || !Array.isArray(showsInput) || showsInput.length === 0 || !showprice) {
       return res.status(400).json({ success: false, message: "Invalid payload" });
     }
 
-    // Who is calling
     const me = await clerkClient.users.getUser(userId);
-    const isAdmin   = me?.privateMetadata?.role === "admin";
+    const isAdmin = me?.privateMetadata?.role === "admin";
     const isDemoUsr = req.isDemo === true || me?.privateMetadata?.demo === true;
 
+    // ✅ Find or create Movie by tmdbId
+    let movie = await Movie.findOne({ tmdbId: String(movieId) });
+    if (!movie) {
+      const { data: m } = await axios.get(`https://api.themoviedb.org/3/movie/${movieId}`, {
+        headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
+      });
 
-    const movieRef = await ensureMovieByTmdb(movieId, fallback); // returns String(tmdbId)
+      const { data: credits } = await axios.get(`https://api.themoviedb.org/3/movie/${movieId}/credits`, {
+        headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
+      });
+      const casts = (credits.cast ?? []).slice(0, 12).map(c => ({
+        fullName: c.name,
+        primaryImage: c.profile_path ? `https://image.tmdb.org/t/p/w500${c.profile_path}` : null,
+      }));
+
+      movie = await Movie.create({
+        tmdbId: String(m.id),
+        originalTitle: m.original_title || m.title || "Untitled",
+        description: m.overview || "",
+        primaryImage: m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : "",
+        thumbnails: m.backdrop_path ? [`https://image.tmdb.org/t/p/w500${m.backdrop_path}`] : [],
+        releaseDate: m.release_date || "",
+        original_language: [m.original_language].filter(Boolean),
+        genres: (m.genres || []).map(g => g.name),
+        casts,
+        averageRating: m.vote_average ?? null,
+        runtime: m.runtime ?? null,
+        numVotes: m.vote_count ?? null,
+      });
+    }
 
     const docs = showsInput.map(({ date, time }) => ({
-      movie: movieRef,  
-      showDateTime: new Date(`${date}T${time}:00`),
+      movie: movie._id,
+      showDateTime: new Date(`${date}T${time}`),
       showprice: Number(showprice),
       occupiedSeats: {},
       ...(isDemoUsr ? { isDemo: true, demoOwner: userId } : {}),
@@ -216,7 +239,6 @@ export const demoCreateShow = async (req, res) => {
 
     return res.status(403).json({ success: false, message: "Not allowed" });
   } catch (e) {
-    console.error("demoCreateShow:", e);
     return res.status(500).json({ success: false, message: e.message || "Failed to create show" });
   }
 };
