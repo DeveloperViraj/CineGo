@@ -19,40 +19,43 @@ const port = process.env.PORT || 3000;
 // --- Connect DB
 await mongoConnect();
 
-// --- Stripe webhook BEFORE body parsers
-app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebhooks);
+// --- Stripe webhook (MUST be raw, skip JSON parsing here)
+app.post(
+  '/api/stripe',
+  express.raw({ type: 'application/json' }),
+  stripeWebhooks
+);
 
-// --- JSON parser for everything else
-app.use(express.json());
+// --- JSON parser for all other routes
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/stripe') {
+    return next(); // skip JSON parsing for stripe
+  }
+  express.json()(req, res, next);
+});
 
 // --- CORS allow-list
-// --- CORS allow-list
-const allowed = new Set([
-  process.env.FRONTEND_URL,
-  'http://localhost:5173',
-  'http://localhost:5176',
-  'https://cinego-chi.vercel.app',   // ✅ add frontend
-].filter(Boolean));
+const allowed = new Set(
+  [
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://localhost:5176',
+    'https://cinego-chi.vercel.app', // ✅ add frontend
+  ].filter(Boolean)
+);
 
-app.use(cors({
-  origin(origin, cb) {
-    if (!origin || allowed.has(origin)) {
-      return cb(null, true);
-    }
-    console.warn("❌ Blocked CORS origin:", origin);
-    return cb(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-}));
-
-
-app.use(cors({
-  origin(origin, cb) {
-    if (!origin || allowed.has(origin)) return cb(null, true);
-    return cb(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || allowed.has(origin)) {
+        return cb(null, true);
+      }
+      console.warn('❌ Blocked CORS origin:', origin);
+      return cb(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  })
+);
 
 // --- Clerk
 app.use(clerkMiddleware());
@@ -66,14 +69,21 @@ app.use(async (req, _res, next) => {
 
     const user = await clerkClient.users.getUser(userId);
     const adminEmails = (process.env.ADMIN_EMAILS || '')
-      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
 
-    const primaryEmail = user?.emailAddresses?.find(e => e.id === user.primaryEmailAddressId)
-      ?.emailAddress?.toLowerCase();
+    const primaryEmail = user?.emailAddresses?.find(
+      (e) => e.id === user.primaryEmailAddressId
+    )?.emailAddress?.toLowerCase();
 
-    if (primaryEmail && adminEmails.includes(primaryEmail) && user.privateMetadata?.role !== 'admin') {
+    if (
+      primaryEmail &&
+      adminEmails.includes(primaryEmail) &&
+      user.privateMetadata?.role !== 'admin'
+    ) {
       await clerkClient.users.updateUser(userId, {
-        privateMetadata: { ...user.privateMetadata, role: 'admin' }
+        privateMetadata: { ...user.privateMetadata, role: 'admin' },
       });
     }
   } catch {
@@ -101,12 +111,14 @@ app.use((req, res) => {
 
 // --- Global error handler
 app.use((err, req, res, _next) => {
-  if (process.env.NODE_ENV !== 'production') console.error('Global error:', err);
+  console.error('Global error:', err);
   if (res.headersSent) return;
-  res.status(err.status || 500).json({ success: false, message: err.message || 'Server error' });
+  res
+    .status(err.status || 500)
+    .json({ success: false, message: err.message || 'Server error' });
 });
 
-console.log("👉 INGEST_API_KEY loaded?", !!process.env.INGEST_API_KEY);
+console.log('👉 INGEST_API_KEY loaded?', !!process.env.INGEST_API_KEY);
 
 app.listen(port, () => {
   console.log(`🚀 Server listening at http://localhost:${port}`);
