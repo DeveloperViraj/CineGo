@@ -12,7 +12,7 @@ import adminRouter from './Routes/adminrouter.js';
 import userRouter from './Routes/userrouter.js';
 import { stripeWebhooks } from './Control/Stripewebhooks.js';
 import { attachDemoFlag } from './Middleware/Demo.js';
-
+import sendEmail from "./config/nodemailer.js";
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -95,6 +95,22 @@ app.use(async (req, _res, next) => {
 // --- Health check
 app.get('/', (_req, res) => res.send('Server is live!'));
 
+
+app.get("/api/dev/test-email", async (_req, res) => {
+  try {
+    const to = process.env.TEST_EMAIL_TO || "you@example.com";
+    await sendEmail({
+      to,
+      subject: "CineGo test email",
+      body: "<p>If you see this, SMTP works.</p>",
+    });
+    console.log("📨 Test email sent to:", to);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("✉️ Test email failed:", e);
+    res.status(500).json({ ok: false, err: e.message });
+  }
+});
 // --- Inngest route
 app.use('/api/inngest', serve({ client: inngest, functions }));
 
