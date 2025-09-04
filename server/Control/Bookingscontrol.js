@@ -89,7 +89,11 @@ export const createBooking = async (req, res) => {
       cancel_url: `${origin}/my-bookings`,
       line_items,
       mode: "payment",
-      metadata: { bookingId: booking._id.toString() },
+      metadata: {
+        bookingId: booking._id.toString(),
+      },
+      customer_email: req.body.email || req.user?.primaryEmailAddress?.emailAddress, 
+      // 👆 try to pull email from request OR Clerk user
     });
 
     booking.paymentLink = session.url;
