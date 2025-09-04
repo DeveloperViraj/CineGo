@@ -3,13 +3,13 @@ import { inngest } from "../Inngest/index.js";
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
 import { Stripe } from "stripe";
+import { clerkClient, getAuth } from "@clerk/express";
 
 function toTakenSeatArray(occ) {
   if (!occ) return [];
   if (occ instanceof Map) {
     return [...occ.entries()].filter(([, v]) => !!v).map(([k]) => k);
   }
-  // plain object fallback
   return Object.entries(occ).filter(([, v]) => !!v).map(([k]) => k);
 }
 
@@ -18,7 +18,6 @@ function getSeat(occ, seat) {
   return occ instanceof Map ? !!occ.get(seat) : !!occ[seat];
 }
 
-/** Set a seat taken in Map or object */
 function setSeat(showDoc, seat) {
   if (showDoc.occupiedSeats instanceof Map) {
     showDoc.occupiedSeats.set(seat, true);
@@ -33,7 +32,6 @@ export const checkavailabilty = async (showId, selectedSeats) => {
   try {
     const show = await Show.findById(showId);
     if (!show) return false;
-
     const occ = show.occupiedSeats || new Map();
     const seatTaken = selectedSeats.some((s) => getSeat(occ, s));
     return !seatTaken;
@@ -45,7 +43,20 @@ export const checkavailabilty = async (showId, selectedSeats) => {
 
 export const createBooking = async (req, res) => {
   try {
-    const { userId } = req.auth(); // if your project uses getAuth(req), swap to that
+    // Get userId and email (Clerk)
+    const { userId } = getAuth(req) || {};
+    let userEmail = null;
+    if (userId) {
+      try {
+        const u = await clerkClient.users.getUser(userId);
+        userEmail =
+          u?.emailAddresses?.find((e) => e.id === u.primaryEmailAddressId)
+            ?.emailAddress || null;
+      } catch (e) {
+        console.warn("⚠️ Could not fetch Clerk user:", e.message);
+      }
+    }
+
     const { showId, selectedSeats } = req.body;
     const origin = req.headers.origin;
 
@@ -56,7 +67,7 @@ export const createBooking = async (req, res) => {
 
     const show = await Show.findById(showId).populate("movie");
 
-    // Mark seats as occupied (works for Map or object)
+    // Mark seats as occupied
     for (const seat of selectedSeats) setSeat(show, seat);
     await show.save();
 
@@ -69,7 +80,7 @@ export const createBooking = async (req, res) => {
 
     // Stripe
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const conversionRate = 86; // your existing conversion
+    const conversionRate = 86; // INR→USD
     const usdAmount = booking.amount / conversionRate;
     const unitAmountInCents = Math.floor(usdAmount * 100);
 
@@ -89,23 +100,22 @@ export const createBooking = async (req, res) => {
       cancel_url: `${origin}/my-bookings`,
       line_items,
       mode: "payment",
-      metadata: {
-        bookingId: booking._id.toString(),
-      },
-      customer_email: req.body.email || req.user?.primaryEmailAddress?.emailAddress, 
-      // 👆 try to pull email from request OR Clerk user
+      // ✅ These two lines ensure your webhook has an email to send to
+      customer_email: userEmail || undefined,
+      payment_intent_data: userEmail ? { receipt_email: userEmail } : undefined,
+      // Keep booking reference for webhook
+      metadata: { bookingId: booking._id.toString() },
     });
 
     booking.paymentLink = session.url;
     await booking.save();
 
-    // 🔔 Schedule seat release if unpaid
+    // schedule payment check + initial notification
     await inngest.send({
       name: "app/checkpayment",
       data: { bookingId: booking._id.toString() },
     });
 
-    // 🔔 Trigger booking confirmation email (even before payment)
     await inngest.send({
       name: "app/show.booked",
       data: { bookingId: booking._id.toString() },
