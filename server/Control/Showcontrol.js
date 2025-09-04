@@ -165,21 +165,35 @@ export const getmovies = async (_req, res) => {
 export const getmovie = async (req, res) => {
   try {
     const movieIdStr = String(req.params.movieId);
-
     let movie = null;
 
     if (mongoose.Types.ObjectId.isValid(movieIdStr)) {
       movie = await Movie.findById(movieIdStr).lean();
     }
-
     if (!movie) {
       movie = await Movie.findOne({ tmdbId: movieIdStr }).lean();
     }
 
+    // 🔥 If no trailer in DB, fetch from TMDB
+    if (movie && !movie.trailer) {
+      const videosResp = await axios.get(
+        `https://api.themoviedb.org/3/movie/${movie.tmdbId}/videos`,
+        { headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` } }
+      );
+
+      const trailerData = (videosResp.data?.results ?? []).find(
+        (v) => v.site === "YouTube" && v.type === "Trailer"
+      );
+
+      if (trailerData) {
+        const trailer = `https://www.youtube.com/watch?v=${trailerData.key}`;
+        await Movie.updateOne({ _id: movie._id }, { $set: { trailer } });
+        movie.trailer = trailer; // return updated trailer
+      }
+    }
+
     if (!movie) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Movie not found" });
+      return res.status(404).json({ success: false, message: "Movie not found" });
     }
 
     const shows = await Show.find({
@@ -196,7 +210,7 @@ export const getmovie = async (req, res) => {
 
     return res.status(200).json({ success: true, movie, datetime });
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") console.error("getmovie:", error);
+    console.error("getmovie error:", error);
     if (!res.headersSent)
       return res.status(500).json({ success: false, message: error.message });
   }
