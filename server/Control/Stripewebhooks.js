@@ -1,103 +1,136 @@
 // server/Control/Stripewebhooks.js
 import Stripe from "stripe";
 import Booking from "../models/Booking.js";
+import { inngest } from "../Inngest/index.js";
 
-// Optional helpers (safe to keep even if you don't have them; they are try/catch guarded)
-import { inngest } from "../Inngest/index.js";           // if you have Inngest
-import { sendMail } from "../lib/mailer.js";              // if you have a mailer
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-06-20",
-});
-
+/**
+ * Stripe webhook handler
+ * NOTE: In server.js the route must be:
+ *   app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebhooks)
+ * so that req.body is the raw Buffer for signature verification.
+ */
 export const stripeWebhooks = async (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  const whSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_KEY; // support old env name
+  const signature = req.headers["stripe-signature"];
+  const webhookSecret =
+    process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_KEY;
 
-  if (!whSecret) {
+  if (!webhookSecret) {
     console.error("❌ STRIPE_WEBHOOK_SECRET missing");
     return res.status(500).json({ success: false, message: "Webhook secret missing" });
   }
 
   let event;
   try {
-    // req.body is a Buffer because /api/stripe uses express.raw
-    event = stripe.webhooks.constructEvent(req.body, sig, whSecret);
+    // Verify the webhook signature against the raw body buffer
+    event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
   } catch (err) {
     console.error("❌ Webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  console.log("⚡ Stripe webhook received:", event.type);
+  console.log(`⚡ Stripe webhook received: ${event.type}`);
 
   try {
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
+    switch (event.type) {
+      /**
+       * Preferred event for Checkout payments
+       */
+      case "checkout.session.completed": {
+        const session = event.data.object;
 
-      const bookingId = session?.metadata?.bookingId;
-      if (bookingId) {
-        await Booking.findByIdAndUpdate(bookingId, { isPaid: true, paymentLink: "" });
+        // Try to get bookingId from multiple places
+        const bookingId =
+          session?.metadata?.bookingId ||
+          session?.client_reference_id ||
+          null;
+
+        if (!bookingId) {
+          console.warn("⚠️ checkout.session.completed without bookingId");
+          break;
+        }
+
+        await Booking.findByIdAndUpdate(bookingId, {
+          isPaid: true,
+          paymentLink: "",
+        });
+
         console.log("✅ Booking marked paid (checkout.session.completed):", bookingId);
-      } else {
-        console.warn("⚠️ No bookingId on session.metadata");
-      }
 
-      // Optional email
-      try {
-        const to = session.customer_details?.email;
-        if (to && typeof sendMail === "function") {
-          await sendMail({
-            to,
-            subject: "🎟️ Your CineGo booking is confirmed",
-            text: `Thanks for your booking! Order: ${session.id}`,
-            html: `<p>Thanks for your booking!</p><p>Order: <strong>${session.id}</strong></p>`,
-          });
-          console.log("📨 Email sent to:", to);
-        }
-      } catch (e) {
-        console.error("✉️ Email send failed:", e.message);
-      }
-
-      // Optional Inngest event
-      try {
-        if (inngest?.send) {
+        // Trigger your existing Inngest email flow
+        try {
           await inngest.send({
-            name: "app/booking.completed",
-            data: {
-              sessionId: session.id,
-              email: session.customer_details?.email || null,
-              amount_total: session.amount_total,
-              currency: session.currency,
-              metadata: session.metadata || {},
-            },
+            name: "app/show.booked",
+            data: { bookingId },
           });
-          console.log("🧩 Inngest event emitted: app/booking.completed");
+          console.log("📨 Inngest event sent: app/show.booked", bookingId);
+        } catch (e) {
+          console.error("🧩 Inngest emit failed:", e.message);
         }
-      } catch (e) {
-        console.error("🧩 Inngest emit failed:", e.message);
+
+        break;
       }
-    }
 
-    // Fallback for older flows that looked at payment_intent.succeeded
-    if (event.type === "payment_intent.succeeded") {
-      const pi = event.data.object;
-      const sessions = await stripe.checkout.sessions.list({ payment_intent: pi.id, limit: 1 });
-      const session = sessions.data[0];
+      /**
+       * Fallback for some flows using Payment Intents directly
+       */
+      case "payment_intent.succeeded": {
+        const pi = event.data.object;
 
-      const bookingId = session?.metadata?.bookingId;
-      if (bookingId) {
-        await Booking.findByIdAndUpdate(bookingId, { isPaid: true, paymentLink: "" });
+        // 1) Try PI metadata
+        let bookingId = pi?.metadata?.bookingId || null;
+
+        // 2) Else look up the Checkout Session tied to this PI
+        if (!bookingId) {
+          const sessions = await stripe.checkout.sessions.list({
+            payment_intent: pi.id,
+            limit: 1,
+          });
+          const session = sessions.data[0];
+          bookingId =
+            session?.metadata?.bookingId ||
+            session?.client_reference_id ||
+            null;
+        }
+
+        if (!bookingId) {
+          console.warn("⚠️ payment_intent.succeeded without resolvable bookingId");
+          break;
+        }
+
+        await Booking.findByIdAndUpdate(bookingId, {
+          isPaid: true,
+          paymentLink: "",
+        });
+
         console.log("✅ Booking marked paid (payment_intent.succeeded):", bookingId);
-      } else {
-        console.warn("⚠️ No bookingId found via payment_intent.succeeded fallback");
+
+        // Trigger your existing Inngest email flow
+        try {
+          await inngest.send({
+            name: "app/show.booked",
+            data: { bookingId },
+          });
+          console.log("📨 Inngest event sent: app/show.booked", bookingId);
+        } catch (e) {
+          console.error("🧩 Inngest emit failed:", e.message);
+        }
+
+        break;
       }
+
+      default:
+        // Ignore other events cleanly
+        break;
     }
 
-    return res.json({ received: true });
+    // Always 200 so Stripe doesn't retry unnecessarily
+    return res.sendStatus(200);
   } catch (err) {
-    console.error("❌ Webhook handler failed:", err);
-    return res.status(500).json({ success: false, message: err.message });
+    console.error("❌ Webhook handler error:", err);
+    // Still return 200 to prevent repeated retries; switch to 500 during active debugging if you prefer
+    return res.sendStatus(200);
   }
 };
-
-export default stripeWebhooks;
