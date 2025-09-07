@@ -13,34 +13,35 @@ import userRouter from './Routes/userrouter.js';
 import { stripeWebhooks } from './Control/Stripewebhooks.js';
 import { attachDemoFlag } from './Middleware/Demo.js';
 import sendEmail from "./config/nodemailer.js";
+
 const app = express();
 const port = process.env.PORT || 3000;
 
-// --- Connect DB
+// Connect to MongoDB before starting the server
 await mongoConnect();
 
-// --- Stripe webhook (MUST use raw parser, skip JSON middleware here)
+// Stripe webhook endpoint (requires raw body for signature verification)
 app.post(
   '/api/stripe',
   express.raw({ type: 'application/json' }),
   stripeWebhooks
 );
 
-// --- JSON parser for everything else
+// Apply JSON parser for all routes except Stripe webhook
 app.use((req, res, next) => {
   if (req.originalUrl.startsWith('/api/stripe')) {
-    return next(); // don't JSON-parse Stripe requests
+    return next();
   }
   return express.json()(req, res, next);
 });
 
-// --- CORS allow-list
+// Configure CORS to allow only trusted frontend origins
 const allowed = new Set(
   [
     process.env.FRONTEND_URL,
     'http://localhost:5173',
     'http://localhost:5176',
-    'https://cinego-chi.vercel.app', // ✅ frontend
+    'https://cinego-chi.vercel.app',
   ].filter(Boolean)
 );
 
@@ -50,18 +51,20 @@ app.use(
       if (!origin || allowed.has(origin)) {
         return cb(null, true);
       }
-      console.warn('❌ Blocked CORS origin:', origin);
       return cb(new Error('Not allowed by CORS'));
     },
     credentials: true,
   })
 );
 
-// --- Clerk
+// Attach Clerk authentication middleware
 app.use(clerkMiddleware());
+
+// Attach demo flag middleware (optional - used for demo/testing purposes)
 app.use(attachDemoFlag);
 
-// --- Auto-promote admin (optional)
+// Auto-promote admin users based on email
+// This is optional — the app works without it, but I kept it to simplify admin setup during deployment
 app.use(async (req, _res, next) => {
   try {
     const { userId } = getAuth(req);
@@ -92,10 +95,11 @@ app.use(async (req, _res, next) => {
   next();
 });
 
-// --- Health check
+// Health check endpoint (used by hosting platforms to check server status)
 app.get('/', (_req, res) => res.send('Server is live!'));
 
-
+// Developer-only route for testing SMTP configuration
+// Not required for core app functionality, but useful during setup/debugging
 app.get("/api/dev/test-email", async (_req, res) => {
   try {
     const to = process.env.TEST_EMAIL_TO || "you@example.com";
@@ -104,40 +108,38 @@ app.get("/api/dev/test-email", async (_req, res) => {
       subject: "CineGo test email",
       body: "<p>If you see this, SMTP works.</p>",
     });
-    console.log("📨 Test email sent to:", to);
     res.json({ ok: true });
   } catch (e) {
-    console.error("✉️ Test email failed:", e);
     res.status(500).json({ ok: false, err: e.message });
   }
 });
-// --- Inngest route
+
+// Inngest endpoint for handling background jobs
+// Optional — the app can run without it, but I added it for asynchronous tasks
 app.use('/api/inngest', serve({ client: inngest, functions }));
 
-// --- API Routers
+// Register main API routes
 app.use('/api/show', showRouter);
 app.use('/api/booking', bookingRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/user', userRouter);
 
-// --- 404 handler
+// 404 handler for unknown routes
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 
-// --- Global error handler
+// Global error handler
 app.use((err, req, res, _next) => {
-  console.error('Global error:', err);
   if (res.headersSent) return;
   res
     .status(err.status || 500)
     .json({ success: false, message: err.message || 'Server error' });
 });
 
-console.log('👉 INGEST_API_KEY loaded?', !!process.env.INGEST_API_KEY);
-
+// Start the server
 app.listen(port, () => {
-  console.log(`🚀 Server listening at http://localhost:${port}`);
+  console.log(`Server listening at http://localhost:${port}`);
 });
 
 export default app;
