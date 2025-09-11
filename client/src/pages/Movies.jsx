@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import BlurCircle from "../components/BlurCircle";
 import MovieCard from "../components/MovieCard";
 import { useAppContext } from "../context/Appcontext";
+import { FlaskConical } from "lucide-react";
 
 // very small "NL" parser → genres + keywords
 const GENRE_WORDS = [
@@ -57,7 +58,7 @@ function filterShows(shows = [], q) {
 }
 
 const Movies = () => {
-  const { shows } = useAppContext();
+  const { shows, isAdmin } = useAppContext();
   const [params] = useSearchParams();
   const query = params.get("query") || "";
 
@@ -77,8 +78,36 @@ const Movies = () => {
       </div>
 
       {list.length === 0 ? (
-        <div className="min-h-[40vh] flex items-center justify-center text-gray-400 text-lg">
-          No matches. Try a different query.
+        <div className="min-h-[40vh] flex flex-col items-center justify-center text-center text-gray-300 gap-4">
+          <p className="text-lg">
+            No movies found.
+          </p>
+
+          <p className="max-w-xl text-sm text-gray-400">
+            No movies Available, Try adding movies from the Admin panel by clicking the <span className="inline-flex items-center justify-center mx-1">
+              <FlaskConical className="w-5 h-5 inline-block" />
+            </span> icon.
+          </p>
+
+          <div className="flex gap-3 mt-2">
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dull rounded-full text-sm font-medium"
+            >
+              <FlaskConical className="w-4 h-4" />
+              Open Admin
+            </Link>
+
+            {/* Helpful alternative if not admin: open demo (keeps previous demo flow) */}
+            {!isAdmin && (
+              <Link
+                to="/demo"
+                className="inline-flex items-center gap-2 px-4 py-2 border border-white/10 rounded-full text-sm font-medium"
+              >
+                Try Admin Demo
+              </Link>
+            )}
+          </div>
         </div>
       ) : (
         <div className="flex flex-wrap justify-center gap-8 mt-8">
