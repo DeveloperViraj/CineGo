@@ -1,7 +1,7 @@
 # CineGo – MERN Movie Ticket Booking System
 ### A fully functional full-stack MERN movie ticket booking web app built with Inngest, Nodemailer, Stripe, and Clerk for a seamless and secure movie experience.
 
-### 🚀 Features : --
+### 🚀 Features :
 🎟️ Book movie tickets with live seat selection
 
 🔐 Authentication via Clerk
