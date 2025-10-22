@@ -16,8 +16,7 @@ import Listbookings from './pages/admin/Listbookings';
 import { SignIn, useUser } from '@clerk/clerk-react';
 import Loading from './components/Loading';
 import AdminAccess from './pages/admin/AdminAccess';
-import Demo from './pages/demo';                      // ← NEW (public demo page)
-
+import Demo from './pages/demo';                  
 
 const App = () => {
   const { user, isLoaded } = useUser();
@@ -37,7 +36,6 @@ const App = () => {
         <Route path="/favourites" element={<Favourite />} />
         <Route path="/loading/:nextUrl" element={<Loading />} />
 
-        {/* public demo route */}
         <Route path="/demo" element={<Demo />} />
 
         <Route
