@@ -1,4 +1,9 @@
-// server/Control/Stripewebhooks.js
+// Purpose: Handle Stripe webhook events for payments.
+// This file verifies Stripe signatures, processes successful payments,
+// marks bookings as paid, sends confirmation emails, and optionally emits background events.
+// Note: I did not change any logic , only added simple comments to explain intent.
+// Keep the existing webhook secret and Stripe configuration in env variables.
+
 import Stripe from "stripe";
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
@@ -6,7 +11,7 @@ import Movie from "../models/Movie.js";
 import User from "../models/User.js";
 
 // Use the SAME mailer you use elsewhere in the app:
-import sendEmail from "../config/nodemailer.js"; // <-- IMPORTANT: this exists in your project
+import sendEmail from "../config/nodemailer.js"; 
 
 // Optional: still emit to Inngest if you want
 import { inngest } from "../Inngest/index.js";
@@ -15,6 +20,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2024-06-20",
 });
 
+// Main webhook handler exported to /api/stripe route
+// - Verifies signature using the raw request body (route must use express.raw())
+// - Processes checkout.session.completed and payment_intent.succeeded events
+// - Marks the related booking as paid and sends a confirmation email
 export const stripeWebhooks = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   const whSecret =
@@ -39,7 +48,13 @@ export const stripeWebhooks = async (req, res) => {
   console.log("⚡ Stripe webhook received:", event.type);
 
   try {
-    // Helper to finalize a booking and email the user
+    // Helper: finalize booking and send email
+    // Steps:
+    // 1. Read bookingId from session metadata
+    // 2. Mark booking.isPaid = true and clear paymentLink
+    // 3. Enrich email content with booking/show/movie details if possible
+    // 4. Send email via configured mailer (sendEmail)
+    // 5. Optionally emit an Inngest event for further processing
     const markPaidAndEmail = async (session) => {
       const bookingId = session?.metadata?.bookingId;
       const to =
@@ -59,7 +74,7 @@ export const stripeWebhooks = async (req, res) => {
       });
       console.log("✅ Booking marked paid:", bookingId);
 
-      // Fetch richer details for the email body (optional but nice)
+      // Try to gather booking/show/movie details for the email body
       let movieTitle = "your movie";
       let seatList = "";
       let showDate = "";
@@ -88,7 +103,7 @@ export const stripeWebhooks = async (req, res) => {
         console.warn("ℹ️ Could not enrich email with booking details:", e.message);
       }
 
-      // Send email directly from webhook (no Inngest dependency)
+      // Send confirmation email (if we have an email address)
       try {
         if (to) {
           await sendEmail({
@@ -119,7 +134,7 @@ export const stripeWebhooks = async (req, res) => {
         console.error("✉️ Email send failed:", e.message);
       }
 
-      // Optionally also emit Inngest event
+      // Optionally emit an Inngest event so other workers can react
       try {
         if (inngest?.send) {
           await inngest.send({
@@ -133,12 +148,13 @@ export const stripeWebhooks = async (req, res) => {
       }
     };
 
+    // When checkout completes, finalize booking and email user
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       await markPaidAndEmail(session);
     }
 
-    // Keep fallback for older flows
+    // Older flow: listen for payment intent success and find session
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object;
       const sessions = await stripe.checkout.sessions.list({
