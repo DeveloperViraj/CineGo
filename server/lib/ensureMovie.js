@@ -1,17 +1,27 @@
-// server/lib/ensureMovie.js
+// Purpose: Ensure a movie exists in the database using a TMDB ID.
+// If the movie already exists, it updates missing fields.
+// If it does not exist, it fetches data from TMDB and creates it.
+// This utility keeps movie creation logic reusable and consistent.
+
 import axios from "axios";
 import Movie from "../models/Movie.js";
 
+// Main helper used before creating shows or bookings
+// Returns the MongoDB _id of the movie
 export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
   const rawKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || "";
-  const isV4 = rawKey.startsWith("ey");
+  const isV4 = rawKey.startsWith("ey"); // Detect TMDB v4 (Bearer) token
 
+  // If no TMDB key and no fallback data, we cannot proceed
   if (!rawKey && !fallback.originalTitle) {
     throw new Error("TMDB_API_KEY missing and no fallback provided");
   }
 
-  let details = null, videos = null, credits = null;
+  let details = null,
+    videos = null,
+    credits = null;
 
+  // Fetch movie details, trailers, and credits from TMDB (if key exists)
   if (rawKey) {
     const headers = isV4 ? { Authorization: `Bearer ${rawKey}` } : {};
     const params = isV4
@@ -23,6 +33,7 @@ export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
       axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/videos`, { headers, params }),
       axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/credits`, { headers, params }),
     ]).catch((e) => {
+      // If TMDB fails and no fallback exists, stop the flow
       if (!fallback.originalTitle) {
         throw new Error(`TMDB fetch failed: ${e.response?.status || e.message}`);
       }
@@ -34,8 +45,10 @@ export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
     credits = c?.data || null;
   }
 
+  // Convert TMDB + fallback data into our Movie schema format
   const mapped = mapToMovieDoc(tmdbId, details, videos, credits, fallback);
 
+  // Upsert movie: create if missing, update if already exists
   const upserted = await Movie.findOneAndUpdate(
     { tmdbId: String(tmdbId) },
     { $set: mapped },
@@ -45,6 +58,7 @@ export async function ensureMovieByTmdb(tmdbId, fallback = {}) {
   return upserted._id;
 }
 
+// Maps external TMDB data into the internal Movie document structure
 function mapToMovieDoc(tmdbId, details, videos, credits, fallback) {
   const title =
     details?.title ||
@@ -56,7 +70,7 @@ function mapToMovieDoc(tmdbId, details, videos, credits, fallback) {
     ? `https://image.tmdb.org/t/p/w780${details.poster_path}`
     : fallback.primaryImage || "";
 
-  // ✅ Robust trailer fetch
+  // Pick the best available trailer-type video from YouTube
   const trailerObj = videos?.results?.find(
     (v) =>
       v.site === "YouTube" &&
@@ -66,6 +80,7 @@ function mapToMovieDoc(tmdbId, details, videos, credits, fallback) {
     ? `https://www.youtube.com/watch?v=${trailerObj.key}`
     : "";
 
+  // Map cast members (limit to top 12 for UI clarity)
   const castArr = credits?.cast
     ? credits.cast.slice(0, 12).map((c) => ({
         name: c.name,
