@@ -1,4 +1,3 @@
-// server.js
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -17,17 +16,21 @@ import sendEmail from "./config/nodemailer.js";
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Connect to MongoDB before starting the server
+// Establish MongoDB connection before accepting any requests.
+// The server should not start if the database is unavailable.
 await mongoConnect();
 
-// Stripe webhook endpoint (requires raw body for signature verification)
+// Stripe webhook endpoint.
+// Stripe requires the raw request body to verify webhook signatures,
+// so JSON parsing is intentionally skipped for this route.
 app.post(
   '/api/stripe',
   express.raw({ type: 'application/json' }),
   stripeWebhooks
 );
 
-// Apply JSON parser for all routes except Stripe webhook
+// Apply JSON body parsing for all routes except Stripe webhooks.
+// Parsing Stripe payloads would break signature verification.
 app.use((req, res, next) => {
   if (req.originalUrl.startsWith('/api/stripe')) {
     return next();
@@ -35,7 +38,8 @@ app.use((req, res, next) => {
   return express.json()(req, res, next);
 });
 
-// Configure CORS to allow only trusted frontend origins
+// Restrict API access to known frontend origins only.
+// This protects the backend from unauthorized browser requests.
 const allowed = new Set(
   [
     process.env.FRONTEND_URL,
@@ -57,14 +61,17 @@ app.use(
   })
 );
 
-// Attach Clerk authentication middleware
+// Attach Clerk authentication middleware.
+// This enables access to user identity and session data on every request.
 app.use(clerkMiddleware());
 
-// Attach demo flag middleware (optional - used for demo/testing purposes)
+// Attach demo-related flags to the request.
+// This enables controlled demo behavior without affecting production users.
 app.use(attachDemoFlag);
 
-// Auto-promote admin users based on email
-// This is optional — the app works without it, but I kept it to simplify admin setup during deployment
+// Automatically assign admin role based on email.
+// This is optional and exists to simplify admin onboarding during deployment.
+// The application functions correctly even if this middleware is removed.
 app.use(async (req, _res, next) => {
   try {
     const { userId } = getAuth(req);
@@ -95,11 +102,12 @@ app.use(async (req, _res, next) => {
   next();
 });
 
-// Health check endpoint (used by hosting platforms to check server status)
+// Health check endpoint.
+// Used by hosting providers and load balancers to confirm server availability.
 app.get('/', (_req, res) => res.send('Server is live!'));
 
-// Developer-only route for testing SMTP configuration
-// Not required for core app functionality, but useful during setup/debugging
+// Development-only route for verifying SMTP configuration.
+// This is not required for production and can be safely removed.
 app.get("/api/dev/test-email", async (_req, res) => {
   try {
     const to = process.env.TEST_EMAIL_TO || "you@example.com";
@@ -114,22 +122,23 @@ app.get("/api/dev/test-email", async (_req, res) => {
   }
 });
 
-// Inngest endpoint for handling background jobs
-// Optional — the app can run without it, but I added it for asynchronous tasks
+// Inngest endpoint for background and scheduled jobs.
+// The core application works without this, but it enables async workflows
+// such as delayed seat release and email notifications.
 app.use('/api/inngest', serve({ client: inngest, functions }));
 
-// Register main API routes
+// Register feature-specific API routes.
 app.use('/api/show', showRouter);
 app.use('/api/booking', bookingRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/user', userRouter);
 
-// 404 handler for unknown routes
+// Catch-all handler for undefined routes.
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 
-// Global error handler
+// Centralized error handler to ensure consistent API responses.
 app.use((err, req, res, _next) => {
   if (res.headersSent) return;
   res
@@ -137,7 +146,7 @@ app.use((err, req, res, _next) => {
     .json({ success: false, message: err.message || 'Server error' });
 });
 
-// Start the server
+// Start the HTTP server after all middleware and routes are configured.
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
 });
