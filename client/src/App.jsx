@@ -16,18 +16,26 @@ import Listbookings from './pages/admin/Listbookings';
 import { SignIn, useUser } from '@clerk/clerk-react';
 import Loading from './components/Loading';
 import AdminAccess from './pages/admin/AdminAccess';
-import Demo from './pages/demo';                  
+import Demo from './pages/demo';
 
 const App = () => {
+  // Clerk hook to get authentication state and user info
   const { user, isLoaded } = useUser();
+
+  // Used to detect admin routes so shared UI (Navbar/Footer) can be hidden
   const isAdminPanel = useLocation().pathname.startsWith('/admin');
 
   return (
     <>
+      {/* Global toast notifications for success/error messages */}
       <Toaster />
+
+      {/* Navbar is hidden for admin pages to keep admin UI separate */}
       {!isAdminPanel && <Navbar />}
 
+      {/* Application route definitions */}
       <Routes>
+        {/* Public user routes */}
         <Route path="/" element={<Home />} />
         <Route path="/movies" element={<Movies />} />
         <Route path="/movies/:id" element={<Moviedetails />} />
@@ -36,8 +44,11 @@ const App = () => {
         <Route path="/favourites" element={<Favourite />} />
         <Route path="/loading/:nextUrl" element={<Loading />} />
 
+        {/* Public demo route used for sandbox/testing */}
         <Route path="/demo" element={<Demo />} />
 
+        {/* Admin routes */}
+        {/* Authentication is handled here before rendering admin layout */}
         <Route
           path="/admin/*"
           element={
@@ -54,6 +65,7 @@ const App = () => {
             )
           }
         >
+          {/* Nested admin routes */}
           <Route index element={<Dashboard />} />
           <Route path="add-shows" element={<Addshow />} />
           <Route path="list-shows" element={<Listshow />} />
@@ -62,6 +74,7 @@ const App = () => {
         </Route>
       </Routes>
 
+      {/* Footer is hidden for admin pages */}
       {!isAdminPanel && <Footer />}
     </>
   );
