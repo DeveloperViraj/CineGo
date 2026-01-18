@@ -1,16 +1,22 @@
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.jsx'
-import { BrowserRouter } from 'react-router-dom'
-import { ClerkProvider } from '@clerk/clerk-react'
-import { AppProvider } from './context/Appcontext.jsx'
+import { createRoot } from 'react-dom/client';
+import './index.css';
+import App from './App.jsx';
+import { BrowserRouter } from 'react-router-dom';
+import { ClerkProvider } from '@clerk/clerk-react';
+import { AppProvider } from './context/Appcontext.jsx';
 
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+// Clerk publishable key is required on the client to initialize authentication.
+// This key is safe to expose and must be prefixed with VITE_ in Vite projects.
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
+// Fail fast if authentication is misconfigured.
+// This prevents the app from silently running without auth.
 if (!PUBLISHABLE_KEY) {
-  throw new Error('Missing Publishable Key')
+  throw new Error('Missing Publishable Key');
 }
 
+// React 18 entry point.
+// The app is wrapped with routing, authentication, and global state providers.
 createRoot(document.getElementById('root')).render(
   <BrowserRouter>
     <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl='/'>
@@ -18,5 +24,5 @@ createRoot(document.getElementById('root')).render(
         <App />
       </AppProvider>
     </ClerkProvider>
-  </BrowserRouter>,
-)
+  </BrowserRouter>
+);
