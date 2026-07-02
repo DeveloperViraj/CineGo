@@ -1,154 +1,228 @@
-import express from 'express';
-import cors from 'cors';
-import 'dotenv/config';
-import mongoConnect from './config/database.js';
-import { clerkMiddleware, clerkClient, getAuth } from '@clerk/express';
-import { serve } from 'inngest/express';
-import { inngest, functions } from './Inngest/index.js';
-import showRouter from './Routes/showrouter.js';
-import bookingRouter from './Routes/bookingrouter.js';
-import adminRouter from './Routes/adminrouter.js';
-import userRouter from './Routes/userrouter.js';
-import { stripeWebhooks } from './Control/Stripewebhooks.js';
-import { attachDemoFlag } from './Middleware/Demo.js';
+import express from "express";
+import cors from "cors";
+import "dotenv/config";
+
+import mongoConnect from "./config/database.js";
+import { clerkMiddleware, clerkClient, getAuth } from "@clerk/express";
+import { serve } from "inngest/express";
+
+import { inngest, functions } from "./Inngest/index.js";
+
+import showRouter from "./Routes/showrouter.js";
+import bookingRouter from "./Routes/bookingrouter.js";
+import adminRouter from "./Routes/adminrouter.js";
+import userRouter from "./Routes/userrouter.js";
+
+import { stripeWebhooks } from "./Control/Stripewebhooks.js";
+import { attachDemoFlag } from "./Middleware/Demo.js";
+
 import sendEmail from "./config/nodemailer.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Establish MongoDB connection before accepting any requests.
-// The server should not start if the database is unavailable.
+// --------------------------------------------------
+// MongoDB
+// --------------------------------------------------
+
 await mongoConnect();
 
-// Stripe webhook endpoint.
-// Stripe requires the raw request body to verify webhook signatures,
-// so JSON parsing is intentionally skipped for this route.
-app.post(
-  '/api/stripe',
-  express.raw({ type: 'application/json' }),
-  stripeWebhooks
-);
+// --------------------------------------------------
+// Request Logger (Debugging)
+// --------------------------------------------------
 
-// Apply JSON body parsing for all routes except Stripe webhooks.
-// Parsing Stripe payloads would break signature verification.
 app.use((req, res, next) => {
-  if (req.originalUrl.startsWith('/api/stripe')) {
-    return next();
-  }
-  return express.json()(req, res, next);
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
 });
 
-// Restrict API access to known frontend origins only.
-// This protects the backend from unauthorized browser requests.
+// --------------------------------------------------
+// CORS
+// --------------------------------------------------
+
 const allowed = new Set(
   [
     process.env.FRONTEND_URL,
-    'http://localhost:5173',
-    'http://localhost:5176',
-    'https://cinego-chi.vercel.app',
+    "https://cinego-chi.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:5176",
   ].filter(Boolean)
 );
 
-app.use(
-  cors({
-    origin(origin, cb) {
-      if (!origin || allowed.has(origin)) {
-        return cb(null, true);
-      }
-      return cb(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-  })
+const corsOptions = {
+  origin(origin, cb) {
+    if (!origin || allowed.has(origin)) {
+      return cb(null, true);
+    }
+
+    console.log("❌ Blocked Origin:", origin);
+    cb(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// --------------------------------------------------
+// Stripe Webhook
+// --------------------------------------------------
+
+app.post(
+  "/api/stripe",
+  express.raw({ type: "application/json" }),
+  stripeWebhooks
 );
 
-// Attach Clerk authentication middleware.
-// This enables access to user identity and session data on every request.
+// --------------------------------------------------
+// JSON Parser
+// Skip Stripe because it requires raw body
+// --------------------------------------------------
+
+app.use((req, res, next) => {
+  if (req.originalUrl.startsWith("/api/stripe")) {
+    return next();
+  }
+
+  express.json()(req, res, next);
+});
+
+// --------------------------------------------------
+// Clerk
+// --------------------------------------------------
+
 app.use(clerkMiddleware());
+app.use(attachDemoFlag());
 
-// Attach demo-related flags to the request.
-// This enables controlled demo behavior without affecting production users.
-app.use(attachDemoFlag);
+// --------------------------------------------------
+// Auto Promote Admin
+// --------------------------------------------------
 
-// Automatically assign admin role based on email.
-// This is optional and exists to simplify admin onboarding during deployment.
-// The application functions correctly even if this middleware is removed.
-app.use(async (req, _res, next) => {
+app.use(async (req, res, next) => {
   try {
     const { userId } = getAuth(req);
+
     if (!userId) return next();
 
     const user = await clerkClient.users.getUser(userId);
-    const adminEmails = (process.env.ADMIN_EMAILS || '')
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
+
+    const adminEmails = (process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
 
-    const primaryEmail = user?.emailAddresses?.find(
-      (e) => e.id === user.primaryEmailAddressId
-    )?.emailAddress?.toLowerCase();
+    const primaryEmail = user.emailAddresses
+      ?.find((e) => e.id === user.primaryEmailAddressId)
+      ?.emailAddress?.toLowerCase();
 
     if (
       primaryEmail &&
       adminEmails.includes(primaryEmail) &&
-      user.privateMetadata?.role !== 'admin'
+      user.privateMetadata?.role !== "admin"
     ) {
       await clerkClient.users.updateUser(userId, {
-        privateMetadata: { ...user.privateMetadata, role: 'admin' },
+        privateMetadata: {
+          ...user.privateMetadata,
+          role: "admin",
+        },
       });
+
+      console.log(" Auto-promoted admin:", primaryEmail);
     }
   } catch (err) {
-    console.error('Auto-promote admin error:', err.message);
+    console.error("Auto Promote Error:", err);
   }
+
   next();
 });
 
-// Health check endpoint.
-// Used by hosting providers and load balancers to confirm server availability.
-app.get('/', (_req, res) => res.send('Server is live!'));
+// --------------------------------------------------
+// Health
+// --------------------------------------------------
 
-// Development-only route for verifying SMTP configuration.
-// This is not required for production and can be safely removed.
-app.get("/api/dev/test-email", async (_req, res) => {
+app.get("/", (_, res) => {
+  res.send("Server is live!");
+});
+
+// --------------------------------------------------
+// SMTP Test Route
+// --------------------------------------------------
+
+app.get("/api/dev/test-email", async (_, res) => {
   try {
-    const to = process.env.TEST_EMAIL_TO || "you@example.com";
     await sendEmail({
-      to,
-      subject: "CineGo test email",
-      body: "<p>If you see this, SMTP works.</p>",
+      to: process.env.TEST_EMAIL_TO,
+      subject: "CineGo Test Email",
+      body: "<h2>Email configuration is working 🎉</h2>",
     });
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, err: e.message });
+
+    res.json({
+      ok: true,
+    });
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      ok: false,
+      error: err.message,
+    });
   }
 });
 
-// Inngest endpoint for background and scheduled jobs.
-// The core application works without this, but it enables async workflows
-// such as delayed seat release and email notifications.
-app.use('/api/inngest', serve({ client: inngest, functions }));
+// --------------------------------------------------
+// Inngest
+// --------------------------------------------------
 
-// Register feature-specific API routes.
-app.use('/api/show', showRouter);
-app.use('/api/booking', bookingRouter);
-app.use('/api/admin', adminRouter);
-app.use('/api/user', userRouter);
+app.use(
+  "/api/inngest",
+  serve({
+    client: inngest,
+    functions,
+  })
+);
 
-// Catch-all handler for undefined routes.
+// --------------------------------------------------
+// Routes
+// --------------------------------------------------
+
+app.use("/api/show", showRouter);
+app.use("/api/booking", bookingRouter);
+app.use("/api/admin", adminRouter);
+app.use("/api/user", userRouter);
+
+// --------------------------------------------------
+// 404
+// --------------------------------------------------
+
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: 'Route not found' });
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
 });
 
-// Centralized error handler to ensure consistent API responses.
-app.use((err, req, res, _next) => {
+// --------------------------------------------------
+// Global Error Handler
+// --------------------------------------------------
+
+app.use((err, req, res, next) => {
+  console.error(" Global Error:");
+  console.error(err);
+
   if (res.headersSent) return;
-  res
-    .status(err.status || 500)
-    .json({ success: false, message: err.message || 'Server error' });
+
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Server Error",
+  });
 });
 
-// Start the HTTP server after all middleware and routes are configured.
+// --------------------------------------------------
+// Start Server
+// --------------------------------------------------
+
 app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+  console.log(` Server running on port ${port}`);
 });
 
 export default app;
