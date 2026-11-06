@@ -38,6 +38,7 @@ This project focuses on real production concepts like authentication, payments, 
 - Admin dashboard for shows, bookings, and revenue
 - Demo mode for safe testing without affecting real data
 - Background jobs for payment checks and cleanup
+- **Fully automatic catalog**: what's playing in cinemas is synced from TMDB every day and shows are kept bookable 14 days ahead — no manual updates
 
 ---
 
@@ -52,6 +53,28 @@ This project focuses on real production concepts like authentication, payments, 
 7. Booking is marked as paid
 8. Email confirmation is sent
 9. Background jobs handle cleanup and retries
+
+---
+
+## Automatic movies & shows
+
+`server/lib/autoSchedule.js` keeps the cinema stocked on its own:
+
+1. Reads TMDB **now playing** for your region (`TMDB_REGION`, default `IN`) and keeps the top `AUTO_MOVIE_COUNT` (12) movies on sale.
+2. Creates shows `AUTO_SCHEDULE_DAYS` (14) days ahead at fixed daily slots (`AUTO_SHOW_TIMES`, India time), with weekday/weekend and matinee/prime pricing.
+3. Is idempotent (never duplicates shows), locked against overlapping runs, and removes old unbooked auto-shows.
+4. Falls back to the movies it already knows if TMDB is down, so something is always bookable.
+
+It runs from any of these (use at least one):
+
+| Trigger | Setup |
+| --- | --- |
+| Inngest cron, 03:00 IST daily | Sync the app in the Inngest dashboard (`/api/inngest`), set `INNGEST_EVENT_KEY` + `INNGEST_SIGNING_KEY` |
+| Vercel Cron (`server/vercel.json`) | Set `CRON_SECRET` in the Vercel project; Vercel calls `/api/cron/sync-shows` daily |
+| Built-in timer | Automatic on always-on hosts (Render, Railway, VPS, local) |
+| Self-healing | If the catalog is empty or a daily run was missed, the next visitor's request triggers a refresh |
+
+Admins can also press **Sync now** on the dashboard. Manual "Add Shows" still works for special screenings.
 
 ---
 
@@ -120,14 +143,22 @@ EMAIL_USER=yourgmail@gmail.com
 EMAIL_PASS=your_app_password
 SENDER_EMAIL=yourgmail@gmail.com
 
-INGEST_API_KEY=ingest_xxx
+INNGEST_EVENT_KEY=xxx            # INGEST_API_KEY also works
+INNGEST_SIGNING_KEY=signkey-prod-xxx
 DEMO_CODE=demo123
+FRONTEND_URL=https://your-frontend.vercel.app
+CRON_SECRET=any-long-random-string
 ```
+
+See `server/.env.example` for the optional automation settings (region, number of movies, days ahead, show times, prices).
+
+Stripe webhook events to subscribe: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.expired`.
 
 ### Frontend (`client/.env`)
 ```env
 VITE_BASE_URL=http://localhost:3000
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_xxx
+VITE_CURRENCY=₹
 ```
 
 ---
@@ -137,7 +168,7 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_xxx
 Backend:
 ```bash
 cd server
-npm run dev
+npm run server
 ```
 
 Frontend:

@@ -45,6 +45,23 @@ const movieSchema = new Schema(
 
     // Number of votes used to calculate rating
     numVotes: { type: Number },
+
+    // Wide landscape image (TMDB backdrop) used by the home page hero
+    backdrop: { type: String, default: "" },
+
+    // Short marketing line from TMDB
+    tagline: { type: String, default: "" },
+
+    // TMDB popularity score (used for ordering)
+    popularity: { type: Number, default: 0 },
+
+    // Set by the automatic scheduler: is this movie currently in cinemas?
+    nowPlaying: { type: Boolean, default: false, index: true },
+    nowPlayingRank: { type: Number, default: 999 },
+
+    // When details were last refreshed from TMDB / when we last looked for a trailer
+    syncedAt: { type: Date },
+    trailerCheckedAt: { type: Date },
   },
   {
     // Automatically tracks when the movie was created or updated

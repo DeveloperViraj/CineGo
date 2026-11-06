@@ -1,158 +1,121 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import {
-  MenuIcon,
-  SearchIcon,
-  TicketPlus,
-  XIcon,
-  ShieldCheck,
-  FlaskConical
-} from "lucide-react";
-import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
-import { useAppContext } from "../context/Appcontext";
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { MenuIcon, SearchIcon, TicketPlus, XIcon, ShieldCheck, FlaskConical, HeartIcon } from 'lucide-react';
+import { useClerk, UserButton, useUser } from '@clerk/clerk-react';
+import { useAppContext } from '../context/Appcontext';
 
-const DEMO = import.meta.env.VITE_DEMO_MODE === "1";
+const DEMO = import.meta.env.VITE_DEMO_MODE === '1';
+
+const SUGGESTIONS = ['Tonight', 'This weekend', 'Action', 'Horror', 'Comedy', 'Under ₹250', 'After 6pm'];
 
 const Navbar = () => {
   const { isAdmin } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const { user } = useUser();
   const { openSignIn } = useClerk();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   // search overlay
   const [showSearch, setShowSearch] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState('');
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (showSearch) {
-      const t = setTimeout(() => inputRef.current?.focus(), 60);
-      return () => clearTimeout(t);
-    }
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Close menus on navigation
+  useEffect(() => {
+    setIsOpen(false);
+    setShowSearch(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!showSearch) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 60);
+    const onKey = (e) => e.key === 'Escape' && setShowSearch(false);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [showSearch]);
 
-  const submitSearch = (e) => {
-    e.preventDefault();
-    const query = q.trim();
-    if (!query) return setShowSearch(false);
-    navigate(`/movies?query=${encodeURIComponent(query)}`);
+  const runSearch = (value) => {
+    const query = value.trim();
     setShowSearch(false);
+    if (!query) return;
+    navigate(`/movies?query=${encodeURIComponent(query)}`);
   };
 
+  const linkClass = ({ isActive }) =>
+    `transition hover:text-primary-dull ${isActive ? 'text-primary-dull' : ''}`;
+
+  const links = [
+    { to: '/', label: 'Home', end: true },
+    { to: '/movies', label: 'Movies' },
+    ...(user ? [{ to: '/favourites', label: 'Favourites' }, { to: '/my-bookings', label: 'Bookings' }] : []),
+    ...(isAdmin ? [{ to: '/admin', label: 'Dashboard' }] : []),
+  ];
+
   return (
-    <div className="fixed top-0 left-0 z-50 w-full flex items-center justify-between px-6 md:px-8 lg:px-16 py-5">
-      <Link to="/" onClick={() => scrollTo(0, 0)} className="max-md:flex-1">
-        <img src="/navlogo.png" alt="Logo" className="h-auto w-40" />
+    <header
+      className={`fixed left-0 top-0 z-50 flex w-full items-center justify-between px-6 py-4 transition-colors duration-300 md:px-8 lg:px-16 ${
+        scrolled || isOpen ? 'bg-[#09090B]/85 shadow-lg shadow-black/20 backdrop-blur-md' : 'bg-transparent'
+      }`}
+    >
+      <Link to="/" className="max-md:flex-1" aria-label="CineGo home">
+        <img src="/navlogo.webp" alt="CineGo" width="128" height="45" className="h-auto w-28 md:w-32" />
       </Link>
 
       {/* center nav links */}
-      <div
-        className={`max-md:absolute max-md:top-0 max-md:-left-10 max-md:font-medium max-md:text-lg z-50 flex flex-col md:flex-row items-center max-md:justify-center gap-6 min-md:px-6 py-3 max-md:px-3 max-md:h-screen min-md:rounded-full backdrop-blur bg-black/70 md:bg-white/10 md:border border-gray-300/20 overflow-hidden transition-[width] duration-300 ${
-          isOpen ? "max-md:w-full" : "max-md:w-0"
+      <nav
+        className={`z-50 flex flex-col items-center gap-6 overflow-hidden transition-[width] duration-300 max-md:absolute max-md:left-0 max-md:top-0 max-md:h-screen max-md:justify-center max-md:bg-black/90 max-md:text-lg max-md:font-medium max-md:backdrop-blur md:flex-row md:rounded-full md:border md:border-gray-300/20 md:bg-white/10 md:px-8 md:py-3 md:backdrop-blur ${
+          isOpen ? 'max-md:w-full' : 'max-md:w-0'
         }`}
       >
-        <XIcon
-          className="min-md:hidden absolute top-6 right-6 w-8 h-8 cursor-pointer"
-          onClick={() => setIsOpen(false)}
-        />
-        <Link
-          to="/"
-          onClick={() => {
-            scrollTo(0, 0);
-            setIsOpen(false);
-          }}
-          className="hover:text-primary"
-        >
-          Home
-        </Link>
-        <Link
-          to="/movies"
-          onClick={() => {
-            scrollTo(0, 0);
-            setIsOpen(false);
-          }}
-          className="hover:text-primary"
-        >
-          Movies
-        </Link>
+        <XIcon className="absolute right-6 top-6 h-8 w-8 cursor-pointer md:hidden" onClick={() => setIsOpen(false)} />
+        {links.map((l) => (
+          <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+            {l.label}
+          </NavLink>
+        ))}
+      </nav>
 
-        {isAdmin === true && (
-          <Link
-            to="/admin"
-            onClick={() => {
-              scrollTo(0, 0);
-              setIsOpen(false);
-            }}
-            className="text-primary"
-          >
-            Dashboard
-          </Link>
-        )}
-
-        {isAdmin === false && user && (
-          <Link
-            to="/favourites"
-            onClick={() => {
-              scrollTo(0, 0);
-              setIsOpen(false);
-            }}
-            className="hover:text-primary"
-          >
-            Favourites
-          </Link>
-        )}
-
-        {user && (
-          <Link
-            to="/my-bookings"
-            onClick={() => {
-              scrollTo(0, 0);
-              setIsOpen(false);
-            }}
-            className="hover:text-primary"
-          >
-            Bookings
-          </Link>
-        )}
-      </div>
-
-      {/* right actions: search icon + demo/admin icon + auth */}
-      <div className="flex items-center gap-4">
-        {/* Search */}
+      {/* right actions */}
+      <div className="flex items-center gap-2 md:gap-4">
         <button
           aria-label="Search"
           onClick={() => setShowSearch(true)}
-          className="p-2 rounded-full hover:bg-white/10 focus:outline-none"
+          className="rounded-full p-2 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          <SearchIcon className="w-6 h-6" />
+          <SearchIcon className="h-6 w-6" />
         </button>
 
-        {/* Admin / Demo indicator (right of search) */}
-        {(isAdmin || (DEMO && true)) && (
+        {(isAdmin || DEMO) && (
           <button
-            aria-label={isAdmin ? "Open admin panel" : "Try admin demo"}
-            title={isAdmin ? "Open admin panel" : "Try admin demo"}
+            aria-label={isAdmin ? 'Open admin panel' : 'Try admin demo'}
+            title={isAdmin ? 'Open admin panel' : 'Try admin demo'}
             onClick={() => {
-              if (isAdmin) return navigate("/admin");
-              if (!user) return openSignIn({ afterSignInUrl: "/demo" });
-              navigate("/demo");
+              if (isAdmin) return navigate('/admin');
+              if (!user) return openSignIn({ forceRedirectUrl: '/demo' });
+              navigate('/demo');
             }}
-            className="p-2 rounded-full hover:bg-white/10 focus:outline-none"
+            className="rounded-full p-2 hover:bg-white/10 focus:outline-none max-sm:hidden"
           >
-            {isAdmin ? (
-              <ShieldCheck className="w-6 h-6" />
-            ) : (
-              <FlaskConical className="w-6 h-6" />
-            )}
+            {isAdmin ? <ShieldCheck className="h-6 w-6" /> : <FlaskConical className="h-6 w-6" />}
           </button>
-          )}
+        )}
 
-        {/* Auth */}
         {!user ? (
           <button
-            onClick={openSignIn}
-            className="sm:px-7 sm:py-2 bg-primary hover:bg-primary-dull transition px-4 py-1 rounded-full font-medium cursor-pointer max-md:text-sm"
+            onClick={() => openSignIn()}
+            className="cursor-pointer rounded-full bg-primary px-4 py-1.5 font-medium transition hover:bg-primary-dull max-md:text-sm sm:px-7 sm:py-2"
           >
             Login
           </button>
@@ -162,43 +125,60 @@ const Navbar = () => {
               <UserButton.Action
                 label="My Bookings"
                 labelIcon={<TicketPlus width={15} />}
-                onClick={() => {
-                  navigate("/my-bookings");
-                }}
+                onClick={() => navigate('/my-bookings')}
+              />
+              <UserButton.Action
+                label="Favourites"
+                labelIcon={<HeartIcon width={15} />}
+                onClick={() => navigate('/favourites')}
               />
             </UserButton.MenuItems>
           </UserButton>
         )}
 
-        <MenuIcon
-          className="min-md:hidden w-8 h-8 cursor-pointer"
-          onClick={() => setIsOpen(true)}
-        />
+        <MenuIcon className="h-8 w-8 cursor-pointer md:hidden" onClick={() => setIsOpen(true)} />
       </div>
 
-      {/* lightweight search overlay */}
+      {/* search overlay */}
       {showSearch && (
         <div
-          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[2px] flex items-start justify-center pt-24"
+          className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 pt-24 backdrop-blur-sm"
           onClick={() => setShowSearch(false)}
         >
-          <form
-            onSubmit={submitSearch}
-            onClick={(e) => e.stopPropagation()}
-            className="w-[92%] max-w-xl"
-          >
-            <input
-              ref={inputRef}
-              type="text"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search movies e.g. 'horror this Friday', 'under 300', 'action'"
-              className="w-full rounded-xl bg-neutral-900/90 border border-white/15 px-4 py-3 outline-none text-white placeholder:text-white/50"
-            />
-          </form>
+          <div className="w-[92%] max-w-xl" onClick={(e) => e.stopPropagation()}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                runSearch(q);
+              }}
+              className="flex items-center gap-3 rounded-xl border border-white/15 bg-neutral-900/95 px-4"
+            >
+              <SearchIcon className="h-5 w-5 text-gray-400" />
+              <input
+                ref={inputRef}
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Try 'horror this friday', 'action after 6pm', 'under 300'"
+                className="w-full bg-transparent py-3.5 text-white outline-none placeholder:text-white/40"
+                aria-label="Search movies and shows"
+              />
+            </form>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => runSearch(s)}
+                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-sm text-gray-200 hover:border-primary hover:bg-primary/20"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </header>
   );
 };
 

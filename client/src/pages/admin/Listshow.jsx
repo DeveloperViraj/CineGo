@@ -1,119 +1,129 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import Title from '../../components/Title';
 import Loading from '../../components/Loading';
-import formatDateTime from '../../lib/DateCalculate';
 import BlurCircle from '../../components/BlurCircle';
 import { useAppContext } from '../../context/Appcontext';
-import toast from 'react-hot-toast';
+import { CURRENCY, formatDateTime } from '../../lib/format';
+
+const PAGE = 100;
+
+const countTaken = (occupiedSeats) =>
+  occupiedSeats && typeof occupiedSeats === 'object' ? Object.values(occupiedSeats).filter(Boolean).length : 0;
 
 const Listshow = () => {
-  const { axios, getToken, user } = useAppContext();
-  const currency = import.meta.env.VITE_CURRENCY || '₹';
-  const [shows, setShows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { axios, authHeaders } = useAppContext();
+  const [shows, setShows] = useState(null);
+  const [movieFilter, setMovieFilter] = useState('');
+  const [onlyBooked, setOnlyBooked] = useState(false);
+  const [limit, setLimit] = useState(PAGE);
 
-  // Safely count taken seats regardless of the backing shape (Map/Object/Array/undefined)
-  const countTaken = (occupiedSeats) => {
-    if (!occupiedSeats) return 0;
-
-    // If it smells like a Map (from Mongoose without lean)
-    if (typeof occupiedSeats?.forEach === 'function' &&
-        typeof occupiedSeats?.get === 'function') {
-      let c = 0;
-      occupiedSeats.forEach(v => { if (v) c++; });
-      return c;
-    }
-
-    // If it’s a plain object from JSON
-    if (typeof occupiedSeats === 'object' && !Array.isArray(occupiedSeats)) {
-      return Object.values(occupiedSeats).filter(Boolean).length;
-    }
-
-    // If an array slipped through (defensive)
-    if (Array.isArray(occupiedSeats)) {
-      return occupiedSeats.filter(Boolean).length;
-    }
-
-    return 0;
-  };
-
-  const fetchshows = async () => {
-    setLoading(true);
+  const fetchshows = useCallback(async () => {
     try {
-      const token = await getToken();
-      const { data } = await axios.get('/api/admin/getallshows', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (data?.success) {
-        setShows(Array.isArray(data.showdata) ? data.showdata : []);
-      } else {
-        toast.error(data?.message || 'Failed to load shows');
-        setShows([]);
-      }
+      const { data } = await axios.get('/api/admin/getallshows', { headers: await authHeaders() });
+      if (!data?.success) throw new Error(data?.message);
+      setShows(Array.isArray(data.showdata) ? data.showdata : []);
     } catch (error) {
-      console.error(error);
-      toast.error('Failed to load shows');
+      toast.error(error?.response?.data?.message || 'Failed to load shows');
       setShows([]);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [axios, authHeaders]);
 
   useEffect(() => {
-    if (user) fetchshows();
-  }, [user]); // eslint-disable-line
+    fetchshows();
+  }, [fetchshows]);
 
-  if (loading) return <Loading />;
+  const movies = useMemo(
+    () => [...new Set((shows || []).map((s) => s.movie?.originalTitle).filter(Boolean))].sort(),
+    [shows]
+  );
+
+  const rows = useMemo(
+    () =>
+      (shows || []).filter(
+        (s) =>
+          (!movieFilter || s.movie?.originalTitle === movieFilter) && (!onlyBooked || countTaken(s.occupiedSeats) > 0)
+      ),
+    [shows, movieFilter, onlyBooked]
+  );
+
+  if (shows === null) return <Loading />;
 
   return (
-    <>
-      <div className="w-full md:px-4 max-md:px-0 relative">
-        <Title text1="List" text2="Shows" />
-        <BlurCircle top="0" left="0" />
+    <div className="relative mx-auto w-full max-w-7xl md:px-4">
+      <Title text1="List" text2="Shows" />
+      <BlurCircle top="0" left="0" />
 
-        <div className="mt-6 overflow-x-auto">
-          <table className="min-w-full table-auto border-collapse text-sm text-white rounded-lg overflow-hidden max-md:text-xs">
-            <thead>
-              <tr className="bg-primary/20 text-left whitespace-nowrap">
-                <th className="p-3 text-base font-semibold min-w-[160px]">Movie Name</th>
-                <th className="p-3 text-base font-semibold min-w-[160px]">Show Time</th>
-                <th className="p-3 text-base font-semibold min-w-[140px]">Total Bookings</th>
-                <th className="p-3 text-base font-semibold min-w-[120px]">Earnings</th>
-              </tr>
-            </thead>
-
-            <tbody className="text-sm font-light">
-              {(shows || [])
-                .filter(s => s && s._id) // keep row even if movie failed to populate; we’ll fallback name
-                .map((show, idx) => {
-                  const title = show?.movie?.originalTitle || 'Untitled';
-                  const when = show?.showDateTime
-                    ? formatDateTime(show.showDateTime).replace('•', ' at')
-                    : '--';
-                  const taken = countTaken(show?.occupiedSeats);
-                  const price = Number(show?.showprice || 0);
-                  const earnings = taken * price;
-
-                  return (
-                    <tr
-                      key={show._id || idx}
-                      className="border-b border-primary/10 bg-primary/5 even:bg-primary/10 whitespace-nowrap"
-                    >
-                      <td className="p-3 max-w-[220px] truncate">{title}</td>
-                      <td className="p-3 max-w-[220px] truncate">{when}</td>
-                      <td className="p-3">{taken}</td>
-                      <td className="p-3">
-                        {currency} {earnings}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
+      <div className="mt-6 flex flex-wrap items-center gap-3 text-sm">
+        <select
+          value={movieFilter}
+          onChange={(e) => {
+            setMovieFilter(e.target.value);
+            setLimit(PAGE);
+          }}
+          className="rounded-lg border border-white/15 bg-[#141317] px-3 py-2 outline-none"
+        >
+          <option value="">All movies ({shows.length} shows)</option>
+          {movies.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+        <label className="flex cursor-pointer items-center gap-2 text-gray-300">
+          <input type="checkbox" checked={onlyBooked} onChange={(e) => setOnlyBooked(e.target.checked)} className="accent-primary" />
+          Only shows with bookings
+        </label>
       </div>
-    </>
+
+      <div className="mt-6 overflow-x-auto">
+        <table className="min-w-full table-auto border-collapse overflow-hidden rounded-lg text-sm text-white max-md:text-xs">
+          <thead>
+            <tr className="whitespace-nowrap bg-primary/20 text-left">
+              <th className="p-3 font-semibold">Movie</th>
+              <th className="p-3 font-semibold">Show time</th>
+              <th className="p-3 font-semibold">Price</th>
+              <th className="p-3 font-semibold">Seats booked</th>
+              <th className="p-3 font-semibold">Earnings</th>
+              <th className="p-3 font-semibold">Source</th>
+            </tr>
+          </thead>
+          <tbody className="font-light">
+            {rows.slice(0, limit).map((show) => {
+              const taken = countTaken(show.occupiedSeats);
+              const price = Number(show.showprice || 0);
+              return (
+                <tr key={show._id} className="whitespace-nowrap border-b border-primary/10 bg-primary/5 even:bg-primary/10">
+                  <td className="max-w-[220px] truncate p-3">{show.movie?.originalTitle || 'Untitled'}</td>
+                  <td className="p-3">{formatDateTime(show.showDateTime)}</td>
+                  <td className="p-3">{CURRENCY}{price}</td>
+                  <td className="p-3">{taken}</td>
+                  <td className="p-3">{CURRENCY}{taken * price}</td>
+                  <td className="p-3 text-xs">
+                    {show.isDemo ? (
+                      <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-amber-300">Demo</span>
+                    ) : show.autoGenerated ? (
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-gray-300">Auto</span>
+                    ) : (
+                      <span className="rounded-full bg-primary/30 px-2 py-0.5">Manual</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {rows.length === 0 && <p className="py-8 text-center text-gray-400">No shows found.</p>}
+      </div>
+
+      {rows.length > limit && (
+        <div className="mt-6 flex justify-center">
+          <button onClick={() => setLimit((l) => l + PAGE)} className="rounded-full border border-white/15 px-5 py-2 text-sm hover:bg-white/10">
+            Show more ({rows.length - limit} remaining)
+          </button>
+        </div>
+      )}
+    </div>
   );
 };
 

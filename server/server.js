@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
 import mongoConnect from './config/database.js';
-import { clerkMiddleware, clerkClient, getAuth } from '@clerk/express';
+import { clerkMiddleware } from '@clerk/express';
 import { serve } from 'inngest/express';
 import { inngest, functions } from './Inngest/index.js';
 import showRouter from './Routes/showrouter.js';
@@ -10,128 +10,95 @@ import bookingRouter from './Routes/bookingrouter.js';
 import adminRouter from './Routes/adminrouter.js';
 import userRouter from './Routes/userrouter.js';
 import { stripeWebhooks } from './Control/Stripewebhooks.js';
-import { attachDemoFlag } from './Middleware/Demo.js';
-import sendEmail from "./config/nodemailer.js";
+import { protectOwner } from './Middleware/Auth.js';
+import { allowedOrigins } from './lib/origins.js';
+import { syncShows, getScheduleState } from './lib/autoSchedule.js';
+import sendEmail from './config/nodemailer.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
+app.disable('x-powered-by');
 
-// Establish MongoDB connection before accepting any requests.
-// The server should not start if the database is unavailable.
-await mongoConnect();
+// Start connecting to MongoDB immediately (module load), and make sure every
+// API request waits for the connection. A failed connection is retried on the
+// next request instead of crashing the process.
+mongoConnect().catch(() => {});
+const needDb = async (_req, _res, next) => {
+  try {
+    await mongoConnect();
+    next();
+  } catch (err) {
+    next(Object.assign(new Error('Database unavailable, please retry'), { status: 503 }));
+  }
+};
+
+// Restrict browser access to known frontend origins (FRONTEND_URL, EXTRA_ORIGINS, localhost).
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || allowedOrigins.has(origin)) return cb(null, true);
+      return cb(Object.assign(new Error('Not allowed by CORS'), { status: 403 }));
+    },
+    credentials: true,
+    maxAge: 86400, // let browsers cache the preflight for a day
+  })
+);
 
 // Stripe webhook endpoint.
 // Stripe requires the raw request body to verify webhook signatures,
 // so JSON parsing is intentionally skipped for this route.
-app.post(
-  '/api/stripe',
-  express.raw({ type: 'application/json' }),
-  stripeWebhooks
-);
+app.post('/api/stripe', express.raw({ type: 'application/json' }), needDb, stripeWebhooks);
 
-// Apply JSON body parsing for all routes except Stripe webhooks.
-// Parsing Stripe payloads would break signature verification.
-app.use((req, res, next) => {
-  if (req.originalUrl.startsWith('/api/stripe')) {
-    return next();
-  }
-  return express.json()(req, res, next);
-});
+app.use(express.json({ limit: '200kb' }));
 
-// Restrict API access to known frontend origins only.
-// This protects the backend from unauthorized browser requests.
-const allowed = new Set(
-  [
-    process.env.FRONTEND_URL,
-    'http://localhost:5173',
-    'http://localhost:5176',
-    'https://cinego-chi.vercel.app',
-  ].filter(Boolean)
-);
-
-app.use(
-  cors({
-    origin(origin, cb) {
-      if (!origin || allowed.has(origin)) {
-        return cb(null, true);
-      }
-      return cb(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-  })
-);
-
-// Attach Clerk authentication middleware.
-// This enables access to user identity and session data on every request.
+// Clerk authentication (reads the Bearer token; no network call per request).
+// Role lookups now happen only on routes that need them (see Middleware/Auth.js) —
+// the old global "auto-promote" and "demo flag" middlewares called Clerk's API
+// 2x on every signed-in request.
 app.use(clerkMiddleware());
 
-// Attach demo-related flags to the request.
-// This enables controlled demo behavior without affecting production users.
-app.use(attachDemoFlag);
-
-// Automatically assign admin role based on email.
-// This is optional and exists to simplify admin onboarding during deployment.
-// The application functions correctly even if this middleware is removed.
-app.use(async (req, _res, next) => {
-  try {
-    const { userId } = getAuth(req);
-    if (!userId) return next();
-
-    const user = await clerkClient.users.getUser(userId);
-    const adminEmails = (process.env.ADMIN_EMAILS || '')
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-
-    const primaryEmail = user?.emailAddresses?.find(
-      (e) => e.id === user.primaryEmailAddressId
-    )?.emailAddress?.toLowerCase();
-
-    if (
-      primaryEmail &&
-      adminEmails.includes(primaryEmail) &&
-      user.privateMetadata?.role !== 'admin'
-    ) {
-      await clerkClient.users.updateUser(userId, {
-        privateMetadata: { ...user.privateMetadata, role: 'admin' },
-      });
-    }
-  } catch (err) {
-    console.error('Auto-promote admin error:', err.message);
-  }
-  next();
+// Health check endpoints.
+app.get('/', (_req, res) => res.send('Server is live!'));
+app.get('/api/health', needDb, async (_req, res) => {
+  const state = await getScheduleState().catch(() => null);
+  res.json({ ok: true, lastScheduleSync: state?.lastSuccessAt || null });
 });
 
-// Health check endpoint.
-// Used by hosting providers and load balancers to confirm server availability.
-app.get('/', (_req, res) => res.send('Server is live!'));
-
-// Development-only route for verifying SMTP configuration.
-// This is not required for production and can be safely removed.
-app.get("/api/dev/test-email", async (_req, res) => {
+// Owner-only route for verifying SMTP configuration.
+app.get('/api/dev/test-email', protectOwner, async (_req, res) => {
   try {
-    const to = process.env.TEST_EMAIL_TO || "you@example.com";
-    await sendEmail({
-      to,
-      subject: "CineGo test email",
-      body: "<p>If you see this, SMTP works.</p>",
-    });
-    res.json({ ok: true });
+    const to = process.env.TEST_EMAIL_TO || process.env.OWNER_EMAIL?.split(',')[0];
+    await sendEmail({ to, subject: 'CineGo test email', body: '<p>If you see this, SMTP works.</p>' });
+    res.json({ ok: true, to });
   } catch (e) {
     res.status(500).json({ ok: false, err: e.message });
   }
 });
 
-// Inngest endpoint for background and scheduled jobs.
-// The core application works without this, but it enables async workflows
-// such as delayed seat release and email notifications.
+// Daily automatic schedule, called by Vercel Cron (see vercel.json) or any external
+// scheduler (cron-job.org, GitHub Actions...). Protected by CRON_SECRET.
+app.get('/api/cron/sync-shows', needDb, async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const auth = req.headers.authorization || '';
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  try {
+    const result = await syncShows({ reason: 'cron' });
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Inngest endpoint for background and scheduled jobs (daily schedule, seat release, emails).
 app.use('/api/inngest', serve({ client: inngest, functions }));
 
 // Register feature-specific API routes.
-app.use('/api/show', showRouter);
-app.use('/api/booking', bookingRouter);
-app.use('/api/admin', adminRouter);
-app.use('/api/user', userRouter);
+app.use('/api/show', needDb, showRouter);
+app.use('/api/booking', needDb, bookingRouter);
+app.use('/api/admin', needDb, adminRouter);
+app.use('/api/user', needDb, userRouter);
 
 // Catch-all handler for undefined routes.
 app.use((req, res) => {
@@ -141,14 +108,34 @@ app.use((req, res) => {
 // Centralized error handler to ensure consistent API responses.
 app.use((err, req, res, _next) => {
   if (res.headersSent) return;
-  res
-    .status(err.status || 500)
-    .json({ success: false, message: err.message || 'Server error' });
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error(`${req.method} ${req.originalUrl}:`, err);
+  res.status(status).json({ success: false, message: err.message || 'Server error' });
 });
 
-// Start the HTTP server after all middleware and routes are configured.
-app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
-});
+// On Vercel the exported app is the request handler; everywhere else we listen.
+if (!process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(`Server listening at http://localhost:${port}`);
+  });
+
+  // Always-on hosts (Render, Railway, a VPS, local dev): keep the schedule fresh
+  // without any external cron. Checks shortly after boot and then every 6 hours;
+  // only actually syncs when the last successful run is older than 20 hours.
+  if (process.env.AUTO_SCHEDULE !== '0') {
+    const tick = async () => {
+      try {
+        await mongoConnect();
+        const state = await getScheduleState();
+        const last = state?.lastSuccessAt ? new Date(state.lastSuccessAt).getTime() : 0;
+        if (Date.now() - last > 20 * 60 * 60 * 1000) await syncShows({ reason: 'server-timer' });
+      } catch (err) {
+        console.error('[auto-schedule] timer run failed:', err.message);
+      }
+    };
+    setTimeout(tick, 10 * 1000).unref();
+    setInterval(tick, 6 * 60 * 60 * 1000).unref();
+  }
+}
 
 export default app;
