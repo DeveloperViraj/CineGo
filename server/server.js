@@ -32,11 +32,22 @@ const needDb = async (_req, _res, next) => {
   }
 };
 
+// Request logger (debugging). Set REQUEST_LOG=0 to silence it.
+if (process.env.REQUEST_LOG !== '0') {
+  app.use((req, _res, next) => {
+    console.log(`${req.method} ${req.originalUrl}`);
+    next();
+  });
+}
+
 // Restrict browser access to known frontend origins (FRONTEND_URL, EXTRA_ORIGINS, localhost).
+// The cors middleware also answers OPTIONS preflights, so no separate app.options() is needed
+// (and app.options("*") throws on Express 5's router).
 app.use(
   cors({
     origin(origin, cb) {
       if (!origin || allowedOrigins.has(origin)) return cb(null, true);
+      console.log('❌ Blocked Origin:', origin);
       return cb(Object.assign(new Error('Not allowed by CORS'), { status: 403 }));
     },
     credentials: true,
@@ -109,7 +120,7 @@ app.use((req, res) => {
 app.use((err, req, res, _next) => {
   if (res.headersSent) return;
   const status = err.status || err.statusCode || 500;
-  if (status >= 500) console.error(`${req.method} ${req.originalUrl}:`, err);
+  console.error(`Global Error (${req.method} ${req.originalUrl}):`, status >= 500 ? err : err.message);
   res.status(status).json({ success: false, message: err.message || 'Server error' });
 });
 
