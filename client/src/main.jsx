@@ -1,3 +1,5 @@
+// Start loading the movie list immediately, in parallel with React + Clerk
+import "./lib/api";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
@@ -15,7 +17,7 @@ if (!PUBLISHABLE_KEY) {
   throw new Error("Missing Publishable Key");
 }
 
-// React 18 entry point.
+// React entry point.
 createRoot(document.getElementById("root")).render(
   <BrowserRouter>
     <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">

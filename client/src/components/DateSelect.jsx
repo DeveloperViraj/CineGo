@@ -1,58 +1,83 @@
-import { useState } from 'react';
-import BlurCircle from './BlurCircle';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import { ClockIcon } from 'lucide-react';
+import BlurCircle from './BlurCircle';
+import { CURRENCY, dayLabel, formatTime, parseDay } from '../lib/format';
 
-const DateSelect = ({ datetime, id }) => {
+// Pick a date, then a showtime — clicking a showtime goes straight to seat selection.
+const DateSelect = ({ datetime = {}, id, loading = false }) => {
   const navigate = useNavigate();
-  const [selected, setSelected] = useState(null);
+  const dates = useMemo(() => Object.keys(datetime).sort(), [datetime]);
+  const [picked, setPicked] = useState(null);
+  const selected = picked && datetime[picked] ? picked : dates[0];
 
-  const onDateCheck = () => {
-    if (!selected) {
-      toast.error('Please choose a date');
-    } else {
-      navigate(`/movies/${id}/${selected}`);
-      scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
+  const goToSeats = (date, showId) =>
+    navigate(`/movies/${id}/${date}${showId ? `?show=${showId}` : ''}`);
 
   return (
-    <div className="pt-24 px-4 sm:px-6 md:px-10 lg:px-16 xl:px-20 ">
-      <div className="relative flex flex-col md:flex-row items-center justify-center gap-8 sm:gap-10 p-6 sm:p-8 bg-primary/10 border border-primary/20 rounded-lg">
-        <BlurCircle top="-50px" left="100px" />
+    <section id="dates" className="scroll-mt-28 pt-16">
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/10 p-6 sm:p-8">
+        <BlurCircle top="-80px" left="60px" />
+        <h2 className="text-lg font-semibold">Choose date &amp; time</h2>
 
-        <div className="w-full text-white">
-          <p className="text-lg font-semibold mb-8 max-md:text-center">Choose Date</p>
-          <div className="flex items-center gap-4 overflow-x-auto no-scrollbar">
-            <div className="flex gap-4 min-w-0 min-md:max-w-90 overflow-scroll no-scrollbar max-md:gap-2">
-              {Object.keys(datetime).map((date) => {
-                const d = new Date(date);
+        {loading ? (
+          <div className="mt-6 flex gap-3">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="skeleton h-20 w-16 rounded-xl" />
+            ))}
+          </div>
+        ) : dates.length === 0 ? (
+          <p className="mt-4 text-gray-300">
+            No upcoming shows for this movie right now. New showtimes are added automatically every day.
+          </p>
+        ) : (
+          <>
+            <div className="no-scrollbar mt-6 flex gap-3 overflow-x-auto pb-1">
+              {dates.map((date) => {
+                const d = parseDay(date);
+                const active = selected === date;
                 return (
                   <button
                     key={date}
-                    onClick={() => setSelected(date)}
-                    className={`flex flex-col items-center justify-center min-w-[56px] h-16 aspect-square rounded cursor-pointer
-                      ${selected === date
-                        ? 'bg-primary text-white'
-                        : 'border border-primary/70 text-white hover:bg-primary/10'}`}
+                    onClick={() => setPicked(date)}
+                    className={`flex h-20 w-16 shrink-0 flex-col items-center justify-center rounded-xl border text-center transition ${
+                      active
+                        ? 'border-primary bg-primary text-white shadow-lg shadow-primary/30'
+                        : 'border-primary/40 text-gray-200 hover:bg-primary/20'
+                    }`}
                   >
-                    <span className="text-lg font-medium">{d.getDate()}</span>
-                    <span className="text-sm">{d.toLocaleDateString('en-IN', { month: 'short' })}</span>
+                    <span className="text-[11px] uppercase tracking-wide opacity-80">
+                      {dayLabel(d) === 'Tomorrow' ? 'Tmrw' : dayLabel(d)}
+                    </span>
+                    <span className="text-xl font-semibold leading-tight">{d.getDate()}</span>
+                    <span className="text-xs opacity-80">{d.toLocaleDateString('en-IN', { month: 'short' })}</span>
                   </button>
                 );
               })}
             </div>
-          </div>
-        </div>
 
-        <button
-          onClick={onDateCheck}
-          className="mt-4 md:mt-0 px-6 py-2 bg-primary hover:bg-primary/90 transition rounded-lg text-md font-medium w-36 mix-[768px]:px-80"
-        >
-          Book Now
-        </button>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {(datetime[selected] || []).map((slot) => (
+                <button
+                  key={slot.showId}
+                  onClick={() => goToSeats(selected, slot.showId)}
+                  className="group flex items-center gap-2 rounded-lg border border-white/15 bg-black/30 px-4 py-2.5 text-sm transition hover:border-primary hover:bg-primary/20"
+                >
+                  <ClockIcon className="h-4 w-4 text-primary-dull" />
+                  <span className="font-medium">{formatTime(slot.time)}</span>
+                  {slot.price ? (
+                    <span className="text-xs text-gray-400 group-hover:text-gray-200">
+                      {CURRENCY}
+                      {slot.price}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
-    </div>
+    </section>
   );
 };
 

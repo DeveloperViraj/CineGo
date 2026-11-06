@@ -9,7 +9,7 @@ export default function Demo() {
   // When Clerk is ready and user is signed out, open the modal sign-in
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
-      openSignIn({ afterSignInUrl: "/demo" });
+      openSignIn({ forceRedirectUrl: "/demo" });
     }
   }, [isLoaded, isSignedIn, openSignIn]);
 
@@ -23,7 +23,7 @@ export default function Demo() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center pt-28">
         <button
-          onClick={() => openSignIn({ afterSignInUrl: "/demo" })}
+          onClick={() => openSignIn({ forceRedirectUrl: "/demo" })}
           className="px-4 py-2 rounded-lg bg-primary/80 hover:bg-primary"
         >
           Continue to sign in

@@ -1,156 +1,187 @@
-// Purpose: Provide application-wide shared state and API utilities (axios instance, auth helpers, cached data, and refresh triggers).
-// Notes:
-// This file centralizes calls to backend APIs (shows, favorites, admin checks).
-// It exposes a configured axios instance and token helper so components do not reimplement auth logic.
+// Purpose: Provide application-wide shared state and API utilities
+// (axios instance, auth helpers, cached movie list, favourites and roles).
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
-import axios from 'axios';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { useAuth, useUser } from '@clerk/clerk-react';
-
-// Configure axios base URL for all API requests.
-// Keep this here so every component using `axios` from context has a consistent base.
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL || 'http://localhost:3000/api';
+import { axios, fetchMovies, initialMoviesRequest, readCachedMovies } from '../lib/api';
 
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-  // UI / role flags
-  // isAdmin / isOwner reflect server-validated roles; checking* flags indicate an in-flight check
+  // Roles (server-validated). One request returns admin + owner + demo flags.
   const [isAdmin, setIsAdmin] = useState(false);
-  const [checkingAdmin, setCheckingAdmin] = useState(false);
-
   const [isOwner, setIsOwner] = useState(false);
-  const [checkingOwner, setCheckingOwner] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
+  const [checkingRoles, setCheckingRoles] = useState(false);
+  // True once roles are known for the current user (prevents admin pages from
+  // redirecting away before the check has even started)
+  const [rolesReady, setRolesReady] = useState(false);
 
-  // Cached data
-  const [shows, setShows] = useState([]); // list of shows/movies used across the app
-  const [favorites, setFavorites] = useState([]); // user's favorite movies (requires auth)
+  // Movies: start from the local cache so the page renders instantly
+  const [shows, setShows] = useState(() => readCachedMovies() || []);
+  const [moviesLoading, setMoviesLoading] = useState(() => !readCachedMovies()?.length);
+  const [moviesError, setMoviesError] = useState(false);
 
-  // Refresh triggers
-  // Toggle these flags to force consumers to re-fetch data
-  const [refreshMoviesFlag, setRefreshMoviesFlag] = useState(false);
-  const [refreshFavoritesFlag, setRefreshFavoritesFlag] = useState(false);
+  // Favourites (full movie docs) for the signed-in user
+  const [favorites, setFavorites] = useState([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
 
-  // Clerk hooks for auth information & token retrieval
-  const { user } = useUser();
+  const { user, isLoaded: userLoaded } = useUser();
   const { getToken } = useAuth();
-  const location = useLocation();
+  const userId = user?.id;
 
-  // Role checks (server-validated)
-  // fetchIsAdmin: ask backend whether current user has admin privileges
-  const fetchIsAdmin = useCallback(async () => {
-    setCheckingAdmin(true);
-    try {
-      const token = await getToken();
-      const { data } = await axios.get('/api/admin/isAdmin', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setIsAdmin(data.isAdmin === true);
-    } catch (error) {
-      // On any error assume non-admin for safety
-      setIsAdmin(false);
-    } finally {
-      setCheckingAdmin(false);
-    }
+  const authHeaders = useCallback(async () => {
+    const token = await getToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
   }, [getToken]);
 
-  // fetchIsOwner: asks backend if current user is the owner (app-specific role)
-  const fetchIsOwner = useCallback(async () => {
-    setCheckingOwner(true);
-    try {
-      const token = await getToken();
-      const { data } = await axios.get('/api/admin/isOwner', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setIsOwner(data?.isOwner === true);
-    } catch {
-      setIsOwner(false);
-    } finally {
-      setCheckingOwner(false);
-    }
-  }, [getToken]);
+  // ---------- roles ----------
+  const rolesRequest = useRef(null);
+  const fetchRoles = useCallback(async () => {
+    if (rolesRequest.current) return rolesRequest.current;
+    setCheckingRoles(true);
+    rolesRequest.current = (async () => {
+      try {
+        const { data } = await axios.get('/api/admin/isAdmin', { headers: await authHeaders() });
+        setIsAdmin(data?.isAdmin === true);
+        setIsOwner(data?.isOwner === true);
+        setIsDemo(data?.isDemo === true);
+      } catch {
+        setIsAdmin(false);
+        setIsOwner(false);
+        setIsDemo(false);
+      } finally {
+        setCheckingRoles(false);
+        setRolesReady(true);
+        rolesRequest.current = null;
+      }
+    })();
+    return rolesRequest.current;
+  }, [authHeaders]);
 
-  // Shows (movies) fetching
-  // Guard to avoid concurrent fetches in a single session.
-  let fetchShowsInFlight = false;
-  const fetchShows = useCallback(async () => {
-    if (fetchShowsInFlight) return;
-    fetchShowsInFlight = true;
+  // ---------- movies ----------
+  const firstLoad = useRef(true);
+  const loadMovies = useCallback(async ({ fresh = false } = {}) => {
+    const request = firstLoad.current && !fresh ? initialMoviesRequest : fetchMovies({ fresh });
+    firstLoad.current = false;
     try {
-      const { data } = await axios.get('/api/show/getmovies');
-      if (data?.success) setShows(data.shows || []);
-      else toast.error(data?.message || 'Failed to load shows');
+      const list = await request;
+      setShows(list);
+      setMoviesError(false);
     } catch (error) {
-      console.error('Error fetching shows:', error);
-      toast.error('Failed to fetch shows');
+      console.error('Error fetching movies:', error);
+      setMoviesError(true);
+      // Only shout if we have nothing to show
+      if (!readCachedMovies()?.length) toast.error('Could not load movies. Retrying…', { id: 'movies' });
     } finally {
-      fetchShowsInFlight = false;
+      setMoviesLoading(false);
     }
   }, []);
 
-  // Favorites (user-specific)
-  // Requires authentication — retrieves the user's favorite movies from backend
+  useEffect(() => {
+    loadMovies();
+  }, [loadMovies]);
+
+  // Retry automatically if the first attempt failed (e.g. a sleeping free-tier server)
+  useEffect(() => {
+    if (!moviesError) return;
+    const t = setTimeout(() => loadMovies({ fresh: true }), 4000);
+    return () => clearTimeout(t);
+  }, [moviesError, loadMovies]);
+
+  // Refresh when the tab becomes visible again after a while
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt > 5 * 60 * 1000) loadMovies({ fresh: true });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [loadMovies]);
+
+  const bumpMovies = useCallback(() => loadMovies({ fresh: true }), [loadMovies]);
+
+  // ---------- favourites ----------
   const fetchFavorites = useCallback(async () => {
+    setFavoritesLoading(true);
     try {
-      const token = await getToken();
-      const { data } = await axios.get('/api/user/getfavorites', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const { data } = await axios.get('/api/user/getfavorites', { headers: await authHeaders() });
       if (data?.success) setFavorites(data.movies || []);
-      else toast.error(data?.message || 'Failed to load favourites');
     } catch (error) {
       console.error('Error fetching favorites:', error);
-      toast.error('Failed to fetch favourites');
+    } finally {
+      setFavoritesLoading(false);
     }
-  }, [getToken]);
+  }, [authHeaders]);
 
-  // Refresh helpers exposed to components
-  const bumpMovies = useCallback(() => setRefreshMoviesFlag((p) => !p), []);
-  const bumpFavorites = useCallback(() => setRefreshFavoritesFlag((p) => !p), []);
+  // Optimistic toggle: the heart flips immediately, rolls back on failure
+  const toggleFavorite = useCallback(
+    async (movie) => {
+      if (!userId) {
+        toast.error('Please sign in to save favourites');
+        return;
+      }
+      const id = movie?._id;
+      if (!id) return;
+      const wasFav = favorites.some((m) => m._id === id);
+      setFavorites((prev) => (wasFav ? prev.filter((m) => m._id !== id) : [...prev, movie]));
+      try {
+        const { data } = await axios.post('/api/user/updatefavorites', { movieId: id }, { headers: await authHeaders() });
+        if (!data?.success) throw new Error(data?.message);
+        toast.success(data.message || 'Favourites updated', { id: 'fav' });
+      } catch {
+        setFavorites((prev) => (wasFav ? [...prev, movie] : prev.filter((m) => m._id !== id)));
+        toast.error('Could not update favourites', { id: 'fav' });
+      }
+    },
+    [userId, favorites, authHeaders]
+  );
 
-  // Effects: run checks & fetches at appropriate times
-  // When user changes (login/logout), refresh role flags
+  const bumpFavorites = fetchFavorites;
+
+  // ---------- user changes ----------
   useEffect(() => {
-    if (user) {
-      fetchIsAdmin();
-      fetchIsOwner();
+    if (!userLoaded) return;
+    if (userId) {
+      setRolesReady(false);
+      fetchRoles();
+      fetchFavorites();
     } else {
       setIsAdmin(false);
       setIsOwner(false);
+      setIsDemo(false);
+      setFavorites([]);
+      setRolesReady(true);
     }
-  }, [user, fetchIsAdmin, fetchIsOwner]);
+  }, [userId, userLoaded, fetchRoles, fetchFavorites]);
 
-  // Fetch shows on mount and whenever refreshMoviesFlag toggles
-  useEffect(() => {
-    fetchShows();
-  }, [fetchShows, refreshMoviesFlag]);
-
-  // Fetch favorites when on /favourites page or when refreshFavoritesFlag toggles
-  useEffect(() => {
-    if (user && (location.pathname === '/favourites' || refreshFavoritesFlag)) {
-      fetchFavorites();
-    }
-  }, [user, location.pathname, refreshFavoritesFlag, fetchFavorites]);
-
-  // Context value exposed to consumers
   return (
     <AppContext.Provider
       value={{
         // Data
         shows,
+        moviesLoading,
+        moviesError,
         favorites,
+        favoritesLoading,
         isAdmin,
         isOwner,
-        checkingAdmin,
-        checkingOwner,
+        isDemo,
+        checkingAdmin: checkingRoles,
+        checkingOwner: checkingRoles,
+        checkingRoles,
+        rolesReady,
 
         // API helpers
-        fetchIsAdmin,
-        fetchIsOwner,
+        fetchIsAdmin: fetchRoles,
+        fetchIsOwner: fetchRoles,
+        fetchRoles,
         fetchFavorites,
+        toggleFavorite,
         getToken,
+        authHeaders,
         axios,
 
         // User
@@ -166,4 +197,5 @@ export const AppProvider = ({ children }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAppContext = () => useContext(AppContext);

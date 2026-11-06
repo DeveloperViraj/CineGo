@@ -11,16 +11,18 @@ import {
   KeySquareIcon,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useUser } from '@clerk/clerk-react';
 import { useAppContext } from '../context/Appcontext';
 
 const Adminsidebar = () => {
   const [isOpen, setisOpen] = useState(false);
-  const { isOwner } = useAppContext();
+  const { isOwner, isDemo } = useAppContext();
+  const { user: clerkUser } = useUser();
 
   const user = {
-    firstName: 'Admin',
-    lastName: 'User',
-    imageUrl: assets.profile,
+    firstName: clerkUser?.firstName || 'Admin',
+    lastName: clerkUser?.firstName ? clerkUser?.lastName || '' : 'User',
+    imageUrl: clerkUser?.imageUrl || assets.profile,
   };
 
   // Base admin links
@@ -51,11 +53,12 @@ const Adminsidebar = () => {
           <img
             src={user.imageUrl}
             alt="User"
-            className="w-14 h-14 md:h-16 md:w-16 rounded-full mx-20"
+            className="w-14 h-14 md:h-16 md:w-16 rounded-full mx-20 object-cover"
           />
           <p className="py-2 text-base font-medium max-md:hidden">
             {user.firstName} {user.lastName}
           </p>
+          <p className="-mt-1 text-xs text-gray-500 max-md:hidden">{isOwner ? 'Owner' : isDemo ? 'Demo admin' : 'Admin'}</p>
 
           <div className="w-full">
             {links.map((link, index) => (

@@ -1,121 +1,118 @@
 // Purpose: Handles background jobs and event-based tasks using Inngest.
 // These tasks run outside the main request-response cycle
-// (emails, cleanup jobs, delayed actions, syncing users).
+// (scheduled show updates, seat release, cleanup, emails, syncing users).
 
 import { Inngest } from "inngest";
 import User from "../models/User.js";
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
-import sendEmail from "../config/nodemailer.js";
 import Movie from "../models/Movie.js";
+import sendEmail from "../config/nodemailer.js";
+import mongoConnect from "../config/database.js";
+import { newMovieEmail } from "../lib/emails.js";
+import { syncShows } from "../lib/autoSchedule.js";
+import { releaseUnpaidBooking, releaseStaleHolds, SEAT_HOLD_MINUTES } from "../lib/bookings.js";
 
 // Create Inngest client
-// This connects our app to Inngest using an API key
 export const inngest = new Inngest({
   id: "movie-ticket-booking",
-  eventKey: process.env.INGEST_API_KEY,
+  eventKey: process.env.INNGEST_EVENT_KEY || process.env.INGEST_API_KEY,
 });
 
-//  USER SYNC (CLERK → DB) 
+const fullName = (first, last) => [first, last].filter(Boolean).join(" ") || "CineGo user";
 
-// Create user in MongoDB when a user signs up in Clerk
+function userFromClerk(data) {
+  const { id, first_name, last_name, email_addresses, image_url, primary_email_address_id } = data;
+  const primary =
+    email_addresses?.find((e) => e.id === primary_email_address_id) || email_addresses?.[0];
+  return {
+    _id: id,
+    name: fullName(first_name, last_name),
+    email: primary?.email_address || "",
+    image: image_url || "",
+  };
+}
+
+//  USER SYNC (CLERK → DB)
+// Upserts make these safe to retry (Inngest retries failed functions)
+
 const userCreated = inngest.createFunction(
   { id: "create-user" },
   { event: "clerk/user.created" },
   async ({ event }) => {
-    const { id, first_name, last_name, email_addresses, image_url } = event.data;
-
-    const userdata = {
-      _id: id,
-      name: first_name + " " + last_name,
-      email: email_addresses[0].email_address,
-      image: image_url,
-    };
-
-    await User.create(userdata);
+    await mongoConnect();
+    const doc = userFromClerk(event.data);
+    await User.updateOne({ _id: doc._id }, { $set: doc }, { upsert: true });
   }
 );
 
-// Update user details in MongoDB when Clerk profile changes
 const userUpdated = inngest.createFunction(
   { id: "update-user" },
   { event: "clerk/user.updated" },
   async ({ event }) => {
-    const { id, first_name, last_name, email_addresses, image_url } = event.data;
-
-    const userdata = {
-      _id: id,
-      name: first_name + " " + last_name,
-      email: email_addresses[0].email_address,
-      image: image_url,
-    };
-
-    await User.findByIdAndUpdate(id, userdata);
+    await mongoConnect();
+    const doc = userFromClerk(event.data);
+    await User.updateOne({ _id: doc._id }, { $set: doc }, { upsert: true });
   }
 );
 
-// Delete user from MongoDB when account is deleted in Clerk
 const userDeleted = inngest.createFunction(
   { id: "delete-user" },
   { event: "clerk/user.deleted" },
   async ({ event }) => {
-    const { id } = event.data;
-    await User.findByIdAndDelete(id);
+    await mongoConnect();
+    await User.findByIdAndDelete(event.data.id);
   }
 );
 
-//  PAYMENT CHECK & SEAT RELEASE 
+//  AUTOMATIC NOW-PLAYING SCHEDULE
+// Runs every day at 03:00 India time, and on demand (event "app/shows.sync")
+// when the API notices the schedule is empty or a daily run was missed.
+const syncNowPlayingShows = inngest.createFunction(
+  { id: "sync-now-playing-shows", concurrency: { limit: 1 }, retries: 2 },
+  [{ cron: "TZ=Asia/Kolkata 0 3 * * *" }, { event: "app/shows.sync" }],
+  async ({ event, step }) => {
+    const result = await step.run("sync-movies-and-shows", async () => {
+      await mongoConnect();
+      return syncShows({ reason: event?.data?.reason || "cron" });
+    });
+    const released = await step.run("release-stale-seat-holds", async () => {
+      await mongoConnect();
+      return releaseStaleHolds();
+    });
+    return { ...result, staleHoldsReleased: released };
+  }
+);
 
-// If payment is not completed within 10 minutes:
-// - Free the seats
-// - Delete the booking
+//  PAYMENT CHECK & SEAT RELEASE
+// If payment is not completed within SEAT_HOLD_MINUTES (default 10):
+// expire the Stripe session, free the seats, delete the unpaid booking.
 const releaseSeatsandDeletebooking = inngest.createFunction(
   { id: "relese-seats-delete-booking" },
   { event: "app/checkpayment" },
   async ({ event, step }) => {
-    const tenminutes = new Date(Date.now() + 10 * 60 * 1000);
-
-    // Wait for 10 minutes before checking payment status
-    await step.sleepUntil("Wait-for-10-minutes", tenminutes);
-
-    await step.run("check-payment-status", async () => {
-      const bookingId = event.data.bookingId;
-      const booking = await Booking.findById(bookingId);
-
-      if (!booking.isPaid) {
-        const show = await Show.findById(booking.show);
-
-        booking.bookedseats.forEach((seat) => {
-          delete show.occupiedSeats[seat];
-        });
-
-        show.markModified("occupiedSeats");
-        await show.save();
-        await Booking.findByIdAndDelete(booking._id);
-      }
+    await step.sleep("wait-for-payment", `${SEAT_HOLD_MINUTES}m`);
+    return step.run("check-payment-status", async () => {
+      await mongoConnect();
+      const released = await releaseUnpaidBooking(event.data.bookingId);
+      return { released };
     });
   }
 );
 
-//  PERIODIC CLEANUP 
-// Runs twice a year (Jan & July)
-// Deletes old bookings and shows older than 6 months
+//  PERIODIC CLEANUP
+// Runs twice a year (Jan & July): deletes bookings and shows older than 6 months
 export const cleanupOldData = inngest.createFunction(
   { id: "cleanup-old-bookings-shows" },
   { cron: "0 0 1 1,7 *" },
   async ({ step }) => {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
     return step.run("delete-old-bookings-and-shows", async () => {
-      const deletedBookings = await Booking.deleteMany({
-        createdAt: { $lt: sixMonthsAgo },
-      });
+      await mongoConnect();
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-      const deletedShows = await Show.deleteMany({
-        showDateTime: { $lt: sixMonthsAgo },
-      });
-
+      const deletedBookings = await Booking.deleteMany({ createdAt: { $lt: sixMonthsAgo } });
+      const deletedShows = await Show.deleteMany({ showDateTime: { $lt: sixMonthsAgo } });
       return {
         deletedBookings: deletedBookings.deletedCount,
         deletedShows: deletedShows.deletedCount,
@@ -124,65 +121,37 @@ export const cleanupOldData = inngest.createFunction(
   }
 );
 
-// BOOKING CONFIRMATION EMAIL 
-
-// Sends booking confirmation email after payment success
-const sendbookingEmail = inngest.createFunction(
-  { id: "send-booking-confirmation-mail" },
-  { event: "app/show.booked" },
-  async ({ event }) => {
-    const { bookingId } = event.data;
-
-    try {
-      const booking = await Booking.findById(bookingId).populate({
-        path: "show",
-        populate: { path: "movie", model: "Movie" },
-      });
-
-      if (!booking || !booking.show || !booking.show.movie) return;
-
-      const user = await User.findById(booking.user);
-      if (!user) return;
-
-      const showTime = new Date(
-        booking.show.showDateTime
-      ).toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata" });
-
-      const showDate = new Date(
-        booking.show.showDateTime
-      ).toLocaleDateString("en-US", { timeZone: "Asia/Kolkata" });
-
-      await sendEmail({
-        to: user.email,
-        subject: `Payment confirmation: '${booking.show.movie.originalTitle}' booked!`,
-        body: `...`, // email HTML unchanged
-      });
-    } catch (error) {
-      console.error("Error in sendbookingEmail:", error);
-    }
-  }
-);
-
-// NEW MOVIE ANNOUNCEMENT EMAIL 
-
-// Sends email to all users when a new movie/show is added
+//  NEW MOVIE ANNOUNCEMENT EMAIL
+// Sent when an admin manually adds a movie that wasn't showing before.
+// (The automatic daily schedule never triggers this, so users aren't spammed.)
 const sendNewMovieEmail = inngest.createFunction(
   { id: "send-new-movie-notification" },
   { event: "app/show.added" },
-  async ({ event }) => {
-    const { movieId } = event.data;
-    const users = await User.find({});
-    const movie = await Movie.findById(movieId);
+  async ({ event, step }) => {
+    const recipients = await step.run("load-recipients", async () => {
+      await mongoConnect();
+      const users = await User.find({ email: { $ne: "" } }).select("name email").lean();
+      return users.map((u) => ({ name: u.name, email: u.email }));
+    });
 
-    if (!movie) return;
+    const movie = await step.run("load-movie", async () => {
+      await mongoConnect();
+      const m = await Movie.findById(event.data.movieId).lean();
+      return m ? JSON.parse(JSON.stringify(m)) : null;
+    });
+    if (!movie) return { sent: 0 };
 
-    for (const user of users) {
-      await sendEmail({
-        to: user.email,
-        subject: `🎬 New Show Added: ${movie.originalTitle}`,
-        body: `...`, // email HTML unchanged
-      });
+    let sent = 0;
+    for (const user of recipients) {
+      try {
+        const { subject, body } = newMovieEmail({ name: user.name, movie });
+        await sendEmail({ to: user.email, subject, body });
+        sent++;
+      } catch (e) {
+        console.error("New movie email failed for", user.email, e.message);
+      }
     }
+    return { sent };
   }
 );
 
@@ -191,8 +160,8 @@ export const functions = [
   userCreated,
   userUpdated,
   userDeleted,
+  syncNowPlayingShows,
   releaseSeatsandDeletebooking,
   cleanupOldData,
-  sendbookingEmail,
   sendNewMovieEmail,
 ];

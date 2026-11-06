@@ -9,7 +9,8 @@ const bookingSchema = new Schema(
   {
     // Clerk userId is stored as a string (not ObjectId)
     // because Clerk manages users externally
-    user: { type: String, required: true },
+    // ref lets the admin bookings list populate the user's name
+    user: { type: String, required: true, ref: "User", index: true },
 
     // Reference to the Show document being booked
     // ObjectId is required so we can populate show + movie details
@@ -17,6 +18,7 @@ const bookingSchema = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       required: true,
       ref: "Show",
+      index: true,
     },
 
     // Total booking amount (price × number of seats)
@@ -30,6 +32,10 @@ const bookingSchema = new Schema(
 
     // Stripe checkout URL used for payment
     paymentLink: { type: String },
+
+    // Stripe Checkout session id, so an abandoned session can be expired
+    // when the seat hold runs out (prevents paying for released seats)
+    stripeSessionId: { type: String },
   },
   {
     // Automatically adds createdAt and updatedAt fields
