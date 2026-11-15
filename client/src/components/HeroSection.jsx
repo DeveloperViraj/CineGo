@@ -105,7 +105,7 @@ const HeroSection = () => {
           </p>
           <Link
             to="/movies"
-            className="bg-brand mt-8 inline-flex items-center gap-2 rounded-full px-7 py-3.5 font-semibold shadow-lg shadow-primary/30 transition hover:brightness-110"
+            className="btn-primary mt-8 inline-flex items-center gap-2 rounded-full px-7 py-3.5 font-semibold shadow-lg shadow-white/10 transition "
           >
             Explore movies <ArrowRight className="h-5 w-5" />
           </Link>
@@ -244,7 +244,7 @@ const HeroSection = () => {
                 <div className={`mt-7 flex flex-wrap items-center gap-3 ${isActive ? 'animate-fade-in [animation-delay:260ms]' : ''}`}>
                   <Link
                     to={`/movies/${m._id}`}
-                    className="bg-brand flex items-center gap-2 rounded-full px-7 py-3.5 font-semibold shadow-lg shadow-primary/30 transition hover:brightness-110 active:scale-[0.98]"
+                    className="btn-primary flex items-center gap-2 rounded-full px-7 py-3.5 font-semibold shadow-lg shadow-white/10 transition active:scale-[0.98]"
                   >
                     <TicketIcon className="h-5 w-5" /> Book tickets
                   </Link>

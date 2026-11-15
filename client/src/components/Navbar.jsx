@@ -118,7 +118,7 @@ const Navbar = () => {
         {!user ? (
           <button
             onClick={() => openSignIn()}
-            className="bg-brand cursor-pointer rounded-full px-4 py-1.5 font-semibold shadow-lg shadow-primary/25 transition hover:brightness-110 max-md:text-sm sm:px-7 sm:py-2"
+            className="btn-primary cursor-pointer rounded-full px-4 py-1.5 font-semibold shadow-lg shadow-white/10 transition max-md:text-sm sm:px-7 sm:py-2"
           >
             Login
           </button>

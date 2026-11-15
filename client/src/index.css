@@ -5,32 +5,59 @@
 
 /*
  * Design tokens — change the whole look from here.
- * Warm coral accent (tuned for dark screens, not neon) with an amber partner for
- * gradients and gold for ratings, on a blue-tinted charcoal instead of pure black.
+ * Vercel / Apple inspired: neutral near-black, white primary buttons, glassy
+ * panels, and one soft multi-colour gradient (sky -> indigo -> violet -> pink)
+ * reserved for highlights. Indigo is the single accent for selected states.
  */
 @theme {
-    --color-primary: #f25f5c;        /* coral: buttons, active states */
-    --color-primary-dull: #ff8f7e;   /* lighter coral: accent text, hovers */
-    --color-primary-2: #f7a440;      /* amber: second stop of the brand gradient */
+    --color-primary: #7c80ff;        /* indigo accent: selected seats/times, rings */
+    --color-primary-dull: #a9acff;   /* light indigo: accent text, links */
     --color-gold: #f8c25c;           /* ratings */
 
-    --color-ink: #101219;            /* page background */
-    --color-ink-2: #171a23;          /* raised surfaces: cards, panels */
-    --color-ink-3: #20242f;          /* inputs, hover surfaces */
+    --color-ink: #0b0b0f;            /* page background (neutral, not blue) */
+    --color-ink-2: #141419;          /* raised surfaces: cards, panels */
+    --color-ink-3: #1d1d24;          /* inputs, hover surfaces */
     --color-line: rgb(255 255 255 / 0.09);
 
-    --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+    --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* Brand gradient button / fill */
+/* The brand gradient: used sparingly for highlights (progress, icons, accent text) */
 @utility bg-brand {
-    background-image: linear-gradient(100deg, var(--color-primary) 0%, #f47b4f 55%, var(--color-primary-2) 100%);
+    background-image: linear-gradient(100deg, #38bdf8 0%, #818cf8 38%, #c084fc 68%, #f472b6 100%);
 }
 @utility text-brand {
-    background-image: linear-gradient(100deg, var(--color-primary-dull), var(--color-primary-2));
+    background-image: linear-gradient(100deg, #7dd3fc, #a5b4fc 40%, #d8b4fe 70%, #f9a8d4);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+}
+
+/* Primary call-to-action: solid white pill with dark text (Apple / Vercel style) */
+@utility btn-primary {
+    background-color: #ffffff;
+    color: #0b0b0f;
+    box-shadow: 0 8px 30px rgb(255 255 255 / 0.08);
+    &:hover {
+        background-color: #e9e9ef;
+    }
+}
+
+/* Hairline gradient border (use on a relatively positioned, rounded element) */
+@utility ring-brand {
+    position: relative;
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: linear-gradient(100deg, rgb(56 189 248 / 0.7), rgb(129 140 248 / 0.5), rgb(192 132 252 / 0.5), rgb(244 114 182 / 0.7));
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+    }
 }
 
 /* Global base styles */
@@ -48,14 +75,16 @@ html {
 body {
     color: #f4f4f6;
     background-color: var(--color-ink);
-    /* a faint warm glow at the top so the page never feels flat black */
-    background-image: radial-gradient(1200px 600px at 85% -10%, rgb(242 95 92 / 0.07), transparent 60%);
+    /* soft ambient colour at the top so the page never feels flat black */
+    background-image:
+        radial-gradient(900px 480px at 8% -8%, rgb(56 189 248 / 0.07), transparent 60%),
+        radial-gradient(1000px 520px at 92% -10%, rgb(244 114 182 / 0.07), transparent 60%);
     background-repeat: no-repeat;
     -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-    background: rgb(242 95 92 / 0.35);
+    background: rgb(124 128 255 / 0.4);
 }
 
 :focus-visible {

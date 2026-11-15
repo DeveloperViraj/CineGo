@@ -72,7 +72,7 @@ const MovieTrailer = () => {
             <p className="text-sm text-gray-400">{(current.movie.genres || []).slice(0, 3).join(' • ')}</p>
             <Link
               to={`/movies/${current.movie._id}`}
-              className="bg-brand flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-lg shadow-primary/25 transition hover:brightness-110"
+              className="btn-primary flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-lg shadow-white/10 transition "
             >
               <TicketIcon className="h-4 w-4" /> Book {current.movie.originalTitle}
             </Link>

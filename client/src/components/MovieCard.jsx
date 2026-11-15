@@ -42,7 +42,7 @@ const MovieCard = ({ movie, index = 0, eager = false }) => {
         )}
 
         <div className="absolute inset-x-0 bottom-0 flex translate-y-3 items-end bg-gradient-to-t from-black/85 via-black/35 to-transparent p-3 pt-12 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 max-md:hidden">
-          <span className="bg-brand flex w-full items-center justify-center gap-2 rounded-full py-2 text-sm font-semibold shadow-lg shadow-primary/30">
+          <span className="btn-primary flex w-full items-center justify-center gap-2 rounded-full py-2 text-sm font-semibold shadow-lg shadow-white/10">
             <TicketIcon className="h-4 w-4" /> Book tickets
           </span>
         </div>

@@ -52,7 +52,7 @@ const Moviedetails = () => {
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 pt-24 text-center">
         <p className="text-2xl font-semibold">Movie not found</p>
         <p className="text-gray-400">It may no longer be showing.</p>
-        <Link to="/movies" className="mt-2 rounded-full bg-brand px-5 py-2 text-sm font-medium hover:brightness-110">
+        <Link to="/movies" className="mt-2 rounded-full btn-primary px-5 py-2 text-sm font-medium ">
           Browse movies
         </Link>
       </div>
@@ -152,7 +152,7 @@ const Moviedetails = () => {
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <a
                 href="#dates"
-                className="flex items-center gap-2 rounded-full bg-brand px-6 py-3 font-medium transition hover:brightness-110"
+                className="flex items-center gap-2 rounded-full btn-primary px-6 py-3 font-medium transition "
               >
                 <TicketIcon className="h-5 w-5" /> Buy tickets
               </a>

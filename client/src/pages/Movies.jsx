@@ -114,7 +114,7 @@ const Movies = () => {
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-dull">
+          <p className="text-brand text-xs font-semibold uppercase tracking-[0.18em]">
             {date ? 'By date' : query ? 'Search' : 'In cinemas'}
           </p>
           <h1 className="mt-1.5 text-3xl font-bold tracking-tight md:text-4xl">
@@ -170,7 +170,7 @@ const Movies = () => {
               onClick={() => setParam('genre', g)}
               className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition ${
                 genre === g
-                  ? 'bg-brand text-white shadow-md shadow-primary/25'
+                  ? 'btn-primary shadow-md shadow-white/10'
                   : 'bg-white/5 text-gray-300 ring-1 ring-line hover:bg-white/10 hover:text-white'
               }`}
             >
@@ -196,7 +196,7 @@ const Movies = () => {
           </p>
           <button
             onClick={() => (query || genre ? setParams({}, { replace: true }) : bumpMovies())}
-            className="mt-2 flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-medium hover:brightness-110"
+            className="mt-2 flex items-center gap-2 rounded-full btn-primary px-5 py-2 text-sm font-medium "
           >
             <RefreshCwIcon className="h-4 w-4" /> {query || genre ? 'Show all movies' : 'Refresh'}
           </button>

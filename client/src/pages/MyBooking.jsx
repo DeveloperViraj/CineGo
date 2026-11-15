@@ -66,7 +66,7 @@ const BookingCard = ({ booking, now }) => {
             <>
               <a
                 href={booking.paymentLink}
-                className="rounded-full bg-brand px-4 py-1.5 text-xs font-medium transition hover:brightness-110"
+                className="rounded-full btn-primary px-4 py-1.5 text-xs font-medium transition "
               >
                 Pay now
               </a>
@@ -119,7 +119,7 @@ const MyBooking = () => {
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 pt-24 text-center">
         <TicketIcon className="h-12 w-12 text-primary-dull" />
         <p className="text-xl font-semibold">Sign in to see your bookings</p>
-        <button onClick={() => openSignIn()} className="rounded-full bg-brand px-6 py-2 font-medium hover:brightness-110">
+        <button onClick={() => openSignIn()} className="rounded-full btn-primary px-6 py-2 font-medium ">
           Sign in
         </button>
       </div>
@@ -144,7 +144,7 @@ const MyBooking = () => {
         <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center text-gray-400">
           <TicketIcon className="h-12 w-12 text-primary-dull" />
           <p className="text-lg">No bookings yet.</p>
-          <Link to="/movies" className="rounded-full bg-brand px-6 py-2 font-medium text-white hover:brightness-110">
+          <Link to="/movies" className="rounded-full btn-primary px-6 py-2 font-medium ">
             Find a movie
           </Link>
         </div>

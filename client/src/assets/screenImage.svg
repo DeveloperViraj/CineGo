@@ -1,9 +1,10 @@
 <svg width="585" height="29" viewBox="0 0 585 29" fill="none" xmlns="http://www.w3.org/2000/svg">
 <defs>
 <linearGradient id="screenGlow" x1="0" y1="0" x2="585" y2="0" gradientUnits="userSpaceOnUse">
-<stop offset="0" stop-color="#f25f5c" stop-opacity="0.15"/>
-<stop offset="0.5" stop-color="#f7a440" stop-opacity="0.55"/>
-<stop offset="1" stop-color="#f25f5c" stop-opacity="0.15"/>
+<stop offset="0" stop-color="#38bdf8" stop-opacity="0.25"/>
+<stop offset="0.4" stop-color="#818cf8" stop-opacity="0.6"/>
+<stop offset="0.7" stop-color="#c084fc" stop-opacity="0.6"/>
+<stop offset="1" stop-color="#f472b6" stop-opacity="0.25"/>
 </linearGradient>
 </defs>
 <path d="M585 29V17C585 17 406.824 0 292.5 0C178.176 0 0 17 0 17V29C0 29 175.5 12 292.5 12C404.724 12 585 29 585 29Z" fill="url(#screenGlow)"/>

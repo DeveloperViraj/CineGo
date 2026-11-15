@@ -114,7 +114,7 @@ const SeatLayout = () => {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 pt-24 text-center">
         <p className="text-xl font-semibold">Could not load this show.</p>
-        <Link to={`/movies/${id}`} className="rounded-full bg-brand px-5 py-2 text-sm hover:brightness-110">
+        <Link to={`/movies/${id}`} className="rounded-full btn-primary px-5 py-2 text-sm ">
           Back to movie
         </Link>
       </div>
@@ -271,7 +271,7 @@ const SeatLayout = () => {
           <button
             onClick={createBooking}
             disabled={!selectedSeats.length || submitting}
-            className="flex shrink-0 items-center gap-2 rounded-full bg-brand px-6 py-3 font-medium transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 max-md:px-5 max-md:text-sm"
+            className="flex shrink-0 items-center gap-2 rounded-full btn-primary px-6 py-3 font-medium transition disabled:cursor-not-allowed disabled:opacity-40 max-md:px-5 max-md:text-sm"
           >
             {submitting ? <Loader2Icon className="h-5 w-5 animate-spin" /> : null}
             {submitting ? 'Opening payment…' : 'Proceed to pay'}

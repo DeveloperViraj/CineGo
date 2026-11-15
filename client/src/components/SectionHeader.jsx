@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 const SectionHeader = ({ eyebrow, title, to, linkLabel = 'View all', children }) => (
   <div className="flex items-end justify-between gap-4">
     <div>
-      {eyebrow && <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-dull">{eyebrow}</p>}
+      {eyebrow && <p className="text-brand text-xs font-semibold uppercase tracking-[0.18em]">{eyebrow}</p>}
       <h2 className="mt-1.5 text-2xl font-bold tracking-tight md:text-3xl">{title}</h2>
     </div>
     <div className="flex items-center gap-2">

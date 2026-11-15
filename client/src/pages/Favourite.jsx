@@ -14,7 +14,7 @@ const Favorite = () => {
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 pt-24 text-center">
         <HeartIcon className="h-12 w-12 text-primary-dull" />
         <p className="text-xl font-semibold">Sign in to see your favourites</p>
-        <button onClick={() => openSignIn()} className="rounded-full bg-brand px-6 py-2 font-medium hover:brightness-110">
+        <button onClick={() => openSignIn()} className="rounded-full btn-primary px-6 py-2 font-medium ">
           Sign in
         </button>
       </div>
@@ -40,7 +40,7 @@ const Favorite = () => {
         <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center text-gray-400">
           <HeartIcon className="h-12 w-12" />
           <p>No favourites yet. Tap the ♥ on a movie to save it here.</p>
-          <Link to="/movies" className="rounded-full bg-brand px-6 py-2 font-medium text-white hover:brightness-110">
+          <Link to="/movies" className="rounded-full btn-primary px-6 py-2 font-medium ">
             Browse movies
           </Link>
         </div>

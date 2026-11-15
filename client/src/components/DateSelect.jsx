@@ -42,7 +42,7 @@ const DateSelect = ({ datetime = {}, id, loading = false }) => {
                     onClick={() => setPicked(date)}
                     className={`flex h-20 w-16 shrink-0 flex-col items-center justify-center rounded-xl border text-center transition ${
                       active
-                        ? 'border-transparent bg-brand text-white shadow-lg shadow-primary/30'
+                        ? 'border-transparent btn-primary shadow-lg shadow-white/10'
                         : 'border-primary/40 text-gray-200 hover:bg-primary/20'
                     }`}
                   >

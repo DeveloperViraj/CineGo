@@ -87,7 +87,7 @@ const App = () => {
                 <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 pt-24 text-center">
                   <p className="text-6xl font-bold text-primary-dull">404</p>
                   <p className="text-gray-400">This page doesn&apos;t exist.</p>
-                  <a href="/" className="mt-2 rounded-full bg-brand px-5 py-2 text-sm font-medium hover:brightness-110">
+                  <a href="/" className="mt-2 rounded-full btn-primary px-5 py-2 text-sm font-medium ">
                     Go home
                   </a>
                 </div>

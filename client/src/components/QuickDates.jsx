@@ -21,7 +21,7 @@ const QuickDates = () => {
 
   return (
     <div className="relative z-30 -mt-14 px-4 md:px-14 lg:px-24">
-      <div className="flex flex-col gap-4 rounded-2xl bg-ink-2/85 p-4 shadow-2xl shadow-black/40 ring-1 ring-line backdrop-blur-xl md:flex-row md:items-center md:justify-between md:px-6 md:py-5">
+      <div className="flex flex-col gap-4 ring-brand rounded-2xl bg-ink-2/80 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl md:flex-row md:items-center md:justify-between md:px-6 md:py-5">
         <div className="flex items-center gap-3">
           <span className="bg-brand flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-lg shadow-primary/25">
             <CalendarDaysIcon className="h-5 w-5" />
