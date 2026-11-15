@@ -103,7 +103,15 @@ app.get('/api/cron/sync-shows', needDb, async (req, res) => {
 });
 
 // Inngest endpoint for background and scheduled jobs (daily schedule, seat release, emails).
-app.use('/api/inngest', serve({ client: inngest, functions }));
+// Only GET (introspection), POST (run functions) and PUT (sync) are used by Inngest.
+// Everything else is refused: SDK versions <= 3.53.1 could leak environment variables
+// through PATCH / DELETE / OPTIONS responses (CVE-2026-42047). The SDK is upgraded too;
+// this is defence in depth.
+const inngestHandler = serve({ client: inngest, functions });
+app.get('/api/inngest', inngestHandler);
+app.post('/api/inngest', inngestHandler);
+app.put('/api/inngest', inngestHandler);
+app.all('/api/inngest', (_req, res) => res.status(405).json({ success: false, message: 'Method not allowed' }));
 
 // Register feature-specific API routes.
 app.use('/api/show', needDb, showRouter);
