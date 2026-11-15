@@ -5,7 +5,7 @@ import BlurCircle from '../components/BlurCircle';
 import MovieCard, { MovieCardSkeleton, movieGridClass } from '../components/MovieCard';
 import { useAppContext } from '../context/Appcontext';
 import { axios } from '../lib/api';
-import { CURRENCY, formatDateLong } from '../lib/format';
+import { CURRENCY, formatDateLong, parseDay } from '../lib/format';
 
 const SORTS = {
   popular: { label: 'Popular', fn: () => 0 },
@@ -33,7 +33,10 @@ const minutesLabel = (mins) => {
 const Movies = () => {
   const { shows, moviesLoading, bumpMovies } = useAppContext();
   const [params, setParams] = useSearchParams();
-  const query = (params.get('query') || '').trim();
+  const rawDate = params.get('date') || '';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : '';
+  // "Book by date" links search for that day; the server understands YYYY-MM-DD
+  const query = (params.get('query') || '').trim() || date;
   const genre = params.get('genre') || '';
   const sort = SORTS[params.get('sort')] ? params.get('sort') : 'popular';
 
@@ -78,6 +81,13 @@ const Movies = () => {
     return sort === 'popular' ? base : [...base].sort(SORTS[sort].fn);
   }, [query, search.movies, shows, genre, sort]);
 
+  const clearSearch = () => {
+    const next = new URLSearchParams(params);
+    next.delete('query');
+    next.delete('date');
+    setParams(next, { replace: true });
+  };
+
   const setParam = (key, value) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
@@ -90,7 +100,7 @@ const Movies = () => {
   const appliedChips = a
     ? [
         ...(a.genres || []),
-        a.from && a.to && new Date(a.to) - new Date(a.from) < 2 * 864e5 ? formatDateLong(a.from) : null,
+        !date && a.from && a.to && new Date(a.to) - new Date(a.from) < 2 * 864e5 ? formatDateLong(a.from) : null,
         a.afterMin != null ? `after ${minutesLabel(a.afterMin)}` : null,
         a.beforeMin != null ? `before ${minutesLabel(a.beforeMin)}` : null,
         a.maxPrice != null ? `under ${CURRENCY}${a.maxPrice}` : null,
@@ -104,16 +114,22 @@ const Movies = () => {
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-medium uppercase tracking-wider text-primary-dull">
-            {query ? 'Search' : 'In cinemas'}
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-dull">
+            {date ? 'By date' : query ? 'Search' : 'In cinemas'}
           </p>
-          <h1 className="mt-1 text-2xl font-semibold md:text-3xl">
-            {query ? <>Results for “{query}”</> : 'Now showing'}
+          <h1 className="mt-1.5 text-3xl font-bold tracking-tight md:text-4xl">
+            {date ? (
+              <>Showing on {parseDay(date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</>
+            ) : query ? (
+              <>Results for “{query}”</>
+            ) : (
+              'Now showing'
+            )}
           </h1>
           {appliedChips.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {appliedChips.map((c) => (
-                <span key={c} className="rounded-full bg-primary/20 px-3 py-1 text-xs text-primary-dull">
+                <span key={c} className="rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary-dull ring-1 ring-primary/30">
                   {c}
                 </span>
               ))}
@@ -124,10 +140,10 @@ const Movies = () => {
         <div className="flex items-center gap-2">
           {query && (
             <button
-              onClick={() => setParam('query', '')}
-              className="flex items-center gap-1 rounded-full border border-white/15 px-3 py-1.5 text-sm text-gray-300 hover:bg-white/10"
+              onClick={clearSearch}
+              className="flex items-center gap-1 rounded-full bg-white/8 px-3 py-1.5 text-sm text-gray-200 ring-1 ring-line hover:bg-white/15"
             >
-              <XIcon className="h-4 w-4" /> Clear search
+              <XIcon className="h-4 w-4" /> {date ? 'All dates' : 'Clear search'}
             </button>
           )}
           <label className="sr-only" htmlFor="sort">Sort movies</label>
@@ -135,7 +151,7 @@ const Movies = () => {
             id="sort"
             value={sort}
             onChange={(e) => setParam('sort', e.target.value === 'popular' ? '' : e.target.value)}
-            className="rounded-full border border-white/15 bg-[#141317] px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-primary"
+            className="rounded-full bg-ink-2 px-3 py-1.5 text-sm text-gray-200 outline-none ring-1 ring-line focus:ring-primary"
           >
             {Object.entries(SORTS).map(([k, v]) => (
               <option key={k} value={k}>
@@ -152,10 +168,10 @@ const Movies = () => {
             <button
               key={g || 'all'}
               onClick={() => setParam('genre', g)}
-              className={`shrink-0 rounded-full border px-4 py-1.5 text-sm transition ${
+              className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition ${
                 genre === g
-                  ? 'border-primary bg-primary text-white'
-                  : 'border-white/15 text-gray-300 hover:border-white/40 hover:text-white'
+                  ? 'bg-brand text-white shadow-md shadow-primary/25'
+                  : 'bg-white/5 text-gray-300 ring-1 ring-line hover:bg-white/10 hover:text-white'
               }`}
             >
               {g || 'All'}
@@ -180,7 +196,7 @@ const Movies = () => {
           </p>
           <button
             onClick={() => (query || genre ? setParams({}, { replace: true }) : bumpMovies())}
-            className="mt-2 flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-medium hover:bg-primary-dull"
+            className="mt-2 flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-medium hover:brightness-110"
           >
             <RefreshCwIcon className="h-4 w-4" /> {query || genre ? 'Show all movies' : 'Refresh'}
           </button>

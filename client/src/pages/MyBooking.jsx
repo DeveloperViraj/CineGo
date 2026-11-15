@@ -26,7 +26,7 @@ const BookingCard = ({ booking, now }) => {
   const isPast = new Date(show.showDateTime).getTime() < now;
 
   return (
-    <div className={`flex gap-4 rounded-2xl border p-3 sm:p-4 ${isPast ? 'border-white/5 bg-white/[0.02] opacity-70' : 'border-primary/20 bg-primary/5'}`}>
+    <div className={`flex gap-4 rounded-2xl border p-3 sm:p-4 ${isPast ? 'border-white/5 bg-white/[0.02] opacity-70' : 'border-line bg-ink-2'}`}>
       <Link to={`/movies/${movie._id}`} className="shrink-0">
         <img
           src={tmdbImage(movie.primaryImage, 'w185')}
@@ -66,7 +66,7 @@ const BookingCard = ({ booking, now }) => {
             <>
               <a
                 href={booking.paymentLink}
-                className="rounded-full bg-primary px-4 py-1.5 text-xs font-medium transition hover:bg-primary-dull"
+                className="rounded-full bg-brand px-4 py-1.5 text-xs font-medium transition hover:brightness-110"
               >
                 Pay now
               </a>
@@ -119,7 +119,7 @@ const MyBooking = () => {
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 pt-24 text-center">
         <TicketIcon className="h-12 w-12 text-primary-dull" />
         <p className="text-xl font-semibold">Sign in to see your bookings</p>
-        <button onClick={() => openSignIn()} className="rounded-full bg-primary px-6 py-2 font-medium hover:bg-primary-dull">
+        <button onClick={() => openSignIn()} className="rounded-full bg-brand px-6 py-2 font-medium hover:brightness-110">
           Sign in
         </button>
       </div>
@@ -144,7 +144,7 @@ const MyBooking = () => {
         <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center text-gray-400">
           <TicketIcon className="h-12 w-12 text-primary-dull" />
           <p className="text-lg">No bookings yet.</p>
-          <Link to="/movies" className="rounded-full bg-primary px-6 py-2 font-medium text-white hover:bg-primary-dull">
+          <Link to="/movies" className="rounded-full bg-brand px-6 py-2 font-medium text-white hover:brightness-110">
             Find a movie
           </Link>
         </div>

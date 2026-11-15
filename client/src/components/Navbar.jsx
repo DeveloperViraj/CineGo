@@ -53,8 +53,11 @@ const Navbar = () => {
     navigate(`/movies?query=${encodeURIComponent(query)}`);
   };
 
+  // Active link gets a soft pill on desktop and the accent colour on mobile
   const linkClass = ({ isActive }) =>
-    `transition hover:text-primary-dull ${isActive ? 'text-primary-dull' : ''}`;
+    `rounded-full px-4 py-1.5 transition ${
+      isActive ? 'text-white md:bg-white/12 max-md:text-primary-dull' : 'text-gray-300 hover:text-white'
+    }`;
 
   const links = [
     { to: '/', label: 'Home', end: true },
@@ -66,7 +69,7 @@ const Navbar = () => {
   return (
     <header
       className={`fixed left-0 top-0 z-50 flex w-full items-center justify-between px-6 py-4 transition-colors duration-300 md:px-8 lg:px-16 ${
-        scrolled || isOpen ? 'bg-[#09090B]/85 shadow-lg shadow-black/20 backdrop-blur-md' : 'bg-transparent'
+        scrolled || isOpen ? 'bg-ink/80 shadow-lg shadow-black/25 backdrop-blur-xl' : 'bg-gradient-to-b from-black/40 to-transparent'
       }`}
     >
       <Link to="/" className="max-md:flex-1" aria-label="CineGo home">
@@ -75,7 +78,7 @@ const Navbar = () => {
 
       {/* center nav links */}
       <nav
-        className={`z-50 flex flex-col items-center gap-6 overflow-hidden transition-[width] duration-300 max-md:absolute max-md:left-0 max-md:top-0 max-md:h-screen max-md:justify-center max-md:bg-black/90 max-md:text-lg max-md:font-medium max-md:backdrop-blur md:flex-row md:rounded-full md:border md:border-gray-300/20 md:bg-white/10 md:px-8 md:py-3 md:backdrop-blur ${
+        className={`z-50 flex flex-col items-center gap-6 overflow-hidden transition-[width] duration-300 max-md:absolute max-md:left-0 max-md:top-0 max-md:h-screen max-md:justify-center max-md:bg-ink/95 max-md:text-lg max-md:font-medium max-md:backdrop-blur md:flex-row md:gap-1 md:rounded-full md:bg-white/8 md:p-1.5 md:text-[15px] md:font-medium md:ring-1 md:ring-white/12 md:backdrop-blur-xl ${
           isOpen ? 'max-md:w-full' : 'max-md:w-0'
         }`}
       >
@@ -115,7 +118,7 @@ const Navbar = () => {
         {!user ? (
           <button
             onClick={() => openSignIn()}
-            className="cursor-pointer rounded-full bg-primary px-4 py-1.5 font-medium transition hover:bg-primary-dull max-md:text-sm sm:px-7 sm:py-2"
+            className="bg-brand cursor-pointer rounded-full px-4 py-1.5 font-semibold shadow-lg shadow-primary/25 transition hover:brightness-110 max-md:text-sm sm:px-7 sm:py-2"
           >
             Login
           </button>
@@ -151,7 +154,7 @@ const Navbar = () => {
                 e.preventDefault();
                 runSearch(q);
               }}
-              className="flex items-center gap-3 rounded-xl border border-white/15 bg-neutral-900/95 px-4"
+              className="flex items-center gap-3 rounded-2xl bg-ink-2/95 px-4 shadow-2xl shadow-black/50 ring-1 ring-white/15"
             >
               <SearchIcon className="h-5 w-5 text-gray-400" />
               <input
@@ -169,7 +172,7 @@ const Navbar = () => {
                 <button
                   key={s}
                   onClick={() => runSearch(s)}
-                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-sm text-gray-200 hover:border-primary hover:bg-primary/20"
+                  className="rounded-full bg-white/8 px-3.5 py-1.5 text-sm text-gray-200 ring-1 ring-white/12 transition hover:bg-primary/20 hover:text-white hover:ring-primary/50"
                 >
                   {s}
                 </button>

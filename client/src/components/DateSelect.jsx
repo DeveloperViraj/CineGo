@@ -16,7 +16,7 @@ const DateSelect = ({ datetime = {}, id, loading = false }) => {
 
   return (
     <section id="dates" className="scroll-mt-28 pt-16">
-      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/10 p-6 sm:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-ink-2 p-6 ring-1 ring-line sm:p-8">
         <BlurCircle top="-80px" left="60px" />
         <h2 className="text-lg font-semibold">Choose date &amp; time</h2>
 
@@ -42,7 +42,7 @@ const DateSelect = ({ datetime = {}, id, loading = false }) => {
                     onClick={() => setPicked(date)}
                     className={`flex h-20 w-16 shrink-0 flex-col items-center justify-center rounded-xl border text-center transition ${
                       active
-                        ? 'border-primary bg-primary text-white shadow-lg shadow-primary/30'
+                        ? 'border-transparent bg-brand text-white shadow-lg shadow-primary/30'
                         : 'border-primary/40 text-gray-200 hover:bg-primary/20'
                     }`}
                   >

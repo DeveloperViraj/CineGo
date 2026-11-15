@@ -80,7 +80,7 @@ const AutoSchedulePanel = ({ onSynced }) => {
           <button
             onClick={runNow}
             disabled={running}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium hover:bg-primary-dull disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold hover:brightness-110 disabled:opacity-50"
           >
             {running ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
             {running ? 'Syncing…' : 'Sync now'}

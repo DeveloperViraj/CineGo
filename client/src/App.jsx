@@ -40,7 +40,7 @@ const App = () => {
     <>
       <Toaster
         position="top-center"
-        toastOptions={{ style: { background: '#1c1a22', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' } }}
+        toastOptions={{ style: { background: '#20242f', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' } }}
       />
       <ScrollToTop />
 
@@ -87,7 +87,7 @@ const App = () => {
                 <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 pt-24 text-center">
                   <p className="text-6xl font-bold text-primary-dull">404</p>
                   <p className="text-gray-400">This page doesn&apos;t exist.</p>
-                  <a href="/" className="mt-2 rounded-full bg-primary px-5 py-2 text-sm font-medium hover:bg-primary-dull">
+                  <a href="/" className="mt-2 rounded-full bg-brand px-5 py-2 text-sm font-medium hover:brightness-110">
                     Go home
                   </a>
                 </div>

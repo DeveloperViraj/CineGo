@@ -1,8 +1,12 @@
+// Soft decorative glow behind sections (kept subtle so it never tints the page)
 const BlurCircle = ({ top = 'auto', left = 'auto', right = 'auto', bottom = 'auto' }) => {
   return (
-    <div className='absolute h-60 w-60 -z-60 aspect-square rounded-full bg-primary/30 blur-2xl' style={{ top: top, bottom: bottom, left: left, right: right }}>
-    </div>
-  )
-}
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute -z-10 aspect-square h-72 w-72 rounded-full bg-primary/12 blur-3xl"
+      style={{ top, bottom, left, right }}
+    />
+  );
+};
 
-export default BlurCircle
+export default BlurCircle;

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowRight, CalendarIcon, ClockIcon, Heart, PlayCircleIcon, Star, TicketIcon } from 'lucide-react';
-import BlurCircle from '../components/BlurCircle';
 import DateSelect from '../components/DateSelect';
 import MovieCard, { movieGridClass } from '../components/MovieCard';
 import TrailerModal from '../components/TrailerModal';
@@ -53,7 +52,7 @@ const Moviedetails = () => {
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 pt-24 text-center">
         <p className="text-2xl font-semibold">Movie not found</p>
         <p className="text-gray-400">It may no longer be showing.</p>
-        <Link to="/movies" className="mt-2 rounded-full bg-primary px-5 py-2 text-sm font-medium hover:bg-primary-dull">
+        <Link to="/movies" className="mt-2 rounded-full bg-brand px-5 py-2 text-sm font-medium hover:brightness-110">
           Browse movies
         </Link>
       </div>
@@ -83,18 +82,24 @@ const Moviedetails = () => {
     <div className="relative">
       {/* Backdrop banner */}
       {movie.backdrop && (
-        <div className="absolute inset-x-0 top-0 -z-10 h-[70vh] overflow-hidden">
-          <img src={tmdbImage(movie.backdrop, 'w1280')} alt="" className="h-full w-full object-cover opacity-30" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#09090B]/40 via-[#09090B]/80 to-[#09090B]" />
+        <div className="absolute inset-x-0 top-0 z-0 h-[82vh] min-h-[560px] overflow-hidden">
+          <img
+            src={tmdbImage(movie.backdrop, 'w1280')}
+            alt=""
+            className="h-full w-full animate-fade-in object-cover object-[70%_25%]"
+          />
+          {/* Scrims only where text sits: the artwork stays bright on the right */}
+          <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/75 to-ink/5 max-md:via-ink/60" />
+          <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/20 to-ink/50" />
         </div>
       )}
 
-      <div className="px-6 pb-12 pt-28 md:px-12 lg:px-20 xl:px-28">
+      <div className="relative z-10 px-6 pb-12 pt-28 md:px-12 md:pt-36 lg:px-20 xl:px-28">
         <div className="flex flex-col items-center gap-8 md:flex-row md:items-start md:gap-12">
           <img
             src={tmdbImage(movie.primaryImage, 'w500')}
             alt={`${movie.originalTitle} poster`}
-            className="aspect-[2/3] w-60 shrink-0 rounded-xl object-cover shadow-2xl ring-1 ring-white/10 md:w-80"
+            className="aspect-[2/3] w-56 shrink-0 rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/15 md:w-72 lg:w-80"
             onError={(e) => {
               e.currentTarget.onerror = null;
               e.currentTarget.src = '/fallback-image.svg';
@@ -102,15 +107,16 @@ const Moviedetails = () => {
           />
 
           <div className="relative flex max-w-2xl flex-col gap-4">
-            <BlurCircle top="-40px" left="-60px" />
-            {language && <p className="text-sm font-medium uppercase tracking-wider text-primary-dull">{language}</p>}
-            <h1 className="text-3xl font-bold leading-tight md:text-5xl">{movie.originalTitle}</h1>
-            {movie.tagline && <p className="text-lg italic text-gray-300">{movie.tagline}</p>}
+            {language && <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-dull">{language}</p>}
+            <h1 className="text-4xl font-extrabold leading-[1.05] tracking-tight drop-shadow-[0_2px_20px_rgba(0,0,0,0.5)] md:text-6xl">
+              {movie.originalTitle}
+            </h1>
+            {movie.tagline && <p className="text-lg text-gray-200">{movie.tagline}</p>}
 
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-300">
               {movie.averageRating > 0 && (
                 <span className="flex items-center gap-1.5">
-                  <Star className="h-4 w-4 fill-primary text-primary" />
+                  <Star className="h-4 w-4 fill-gold text-gold" />
                   <b className="text-white">{Number(movie.averageRating).toFixed(1)}</b>
                   {movie.numVotes ? <span className="text-gray-400">({compactNumber(movie.numVotes)} votes)</span> : null}
                 </span>
@@ -133,7 +139,7 @@ const Moviedetails = () => {
                   <Link
                     key={g}
                     to={`/movies?genre=${encodeURIComponent(g)}`}
-                    className="rounded-full border border-white/15 px-3 py-1 text-xs text-gray-300 hover:border-primary hover:text-white"
+                    className="rounded-full bg-black/30 px-3 py-1 text-xs text-gray-100 ring-1 ring-white/15 backdrop-blur-md transition hover:bg-primary/25 hover:ring-primary/50"
                   >
                     {g}
                   </Link>
@@ -141,12 +147,12 @@ const Moviedetails = () => {
               </div>
             )}
 
-            <p className="leading-relaxed text-gray-300">{movie.description}</p>
+            <p className="max-w-xl leading-relaxed text-gray-200">{movie.description}</p>
 
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <a
                 href="#dates"
-                className="flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-medium transition hover:bg-primary-dull"
+                className="flex items-center gap-2 rounded-full bg-brand px-6 py-3 font-medium transition hover:brightness-110"
               >
                 <TicketIcon className="h-5 w-5" /> Buy tickets
               </a>

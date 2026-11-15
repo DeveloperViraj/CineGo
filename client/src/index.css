@@ -3,28 +3,64 @@
 /* Enable Tailwind CSS */
 @import "tailwindcss";
 
-/* Define global theme variables used throughout the app */
+/*
+ * Design tokens — change the whole look from here.
+ * Warm coral accent (tuned for dark screens, not neon) with an amber partner for
+ * gradients and gold for ratings, on a blue-tinted charcoal instead of pure black.
+ */
 @theme {
-    --color-primary: #7b2cbf;
-    --color-primary-dull: #a663cc;
+    --color-primary: #f25f5c;        /* coral: buttons, active states */
+    --color-primary-dull: #ff8f7e;   /* lighter coral: accent text, hovers */
+    --color-primary-2: #f7a440;      /* amber: second stop of the brand gradient */
+    --color-gold: #f8c25c;           /* ratings */
+
+    --color-ink: #101219;            /* page background */
+    --color-ink-2: #171a23;          /* raised surfaces: cards, panels */
+    --color-ink-3: #20242f;          /* inputs, hover surfaces */
+    --color-line: rgb(255 255 255 / 0.09);
+
     --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Brand gradient button / fill */
+@utility bg-brand {
+    background-image: linear-gradient(100deg, var(--color-primary) 0%, #f47b4f 55%, var(--color-primary-2) 100%);
+}
+@utility text-brand {
+    background-image: linear-gradient(100deg, var(--color-primary-dull), var(--color-primary-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
 }
 
 /* Global base styles */
 * {
     scrollbar-width: thin;
-    scrollbar-color: #787777 #1e1e1e;
+    scrollbar-color: #3a3f4d var(--color-ink);
 }
 
 html {
     font-family: var(--font-sans);
+    background-color: var(--color-ink);
 }
 
 /* Application-wide dark theme */
 body {
-    color: #fff;
-    background-color: #09090B;
+    color: #f4f4f6;
+    background-color: var(--color-ink);
+    /* a faint warm glow at the top so the page never feels flat black */
+    background-image: radial-gradient(1200px 600px at 85% -10%, rgb(242 95 92 / 0.07), transparent 60%);
+    background-repeat: no-repeat;
     -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+    background: rgb(242 95 92 / 0.35);
+}
+
+:focus-visible {
+    outline: 2px solid var(--color-primary-dull);
+    outline-offset: 2px;
 }
 
 /* Utility class to hide scrollbars where needed */
@@ -66,13 +102,34 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
 /* Gentle entrance for content that arrives after loading */
 @keyframes fade-in {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: none; }
 }
 .animate-fade-in {
-    animation: fade-in 0.4s ease-out both;
+    animation: fade-in 0.5s ease-out both;
+}
+
+/* Hero: slow "Ken Burns" drift on the active backdrop */
+@keyframes ken-burns {
+    from { transform: scale(1.12) translate3d(1.5%, 0, 0); }
+    to { transform: scale(1.02) translate3d(0, 0, 0); }
+}
+.animate-ken-burns {
+    animation: ken-burns 9s ease-out both;
+}
+
+/* Hero: progress bar for the auto-advancing slide */
+@keyframes hero-progress {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+.animate-hero-progress {
+    transform-origin: left;
+    animation-name: hero-progress;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .skeleton::after, .animate-fade-in { animation: none; }
+    .skeleton::after, .animate-fade-in, .animate-ken-burns { animation: none; }
 }
