@@ -4,7 +4,26 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#09090B" />
+    <meta
+      name="description"
+      content="CineGo — book movie tickets for what's playing now. Pick your show, choose your seats and pay in seconds."
+    />
     <title>CineGo - From Screen to Seat in Seconds</title>
+
+    <!-- Open connections early: API, TMDB images, fonts -->
+    <link rel="preconnect" href="%VITE_BASE_URL%" crossorigin />
+    <link rel="preconnect" href="https://image.tmdb.org" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&display=swap"
+    />
+
+    <!-- Hero background is the first thing users see -->
+    <link rel="preload" as="image" href="/hero-bg.webp" media="(min-width: 768px)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/hero-bg-mobile.webp" media="(max-width: 767px)" fetchpriority="high" />
   </head>
   <body>
     <div id="root"></div>

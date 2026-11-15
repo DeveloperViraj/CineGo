@@ -1,153 +1,135 @@
 // Purpose: Handles everything related to booking seats.
-// This includes: checking if seats are free, creating a booking,
+// This includes: validating the request, atomically reserving seats,
 // starting the Stripe payment, and returning taken seats.
 
+import mongoose from "mongoose";
 import { inngest } from "../Inngest/index.js";
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
-import { Stripe } from "stripe";
-import { clerkClient, getAuth } from "@clerk/express";
-import axios from "axios";
+import { getClerkUser, primaryEmailOf } from "../lib/clerkUsers.js";
+import { frontendOrigin } from "../lib/origins.js";
+import {
+  getStripe,
+  reserveSeats,
+  freeSeats,
+  seatsTakenList,
+  releaseStaleHolds,
+  SEAT_REGEX,
+  MAX_SEATS_PER_BOOKING,
+} from "../lib/bookings.js";
 
-// Turn occupied seats (stored as an object or Map) into a list of seat names
-function toTakenSeatArray(occ) {
-  if (!occ) return [];
-  if (occ instanceof Map) {
-    return [...occ.entries()].filter(([, v]) => !!v).map(([k]) => k);
-  }
-  return Object.entries(occ).filter(([, v]) => !!v).map(([k]) => k);
+// Convert the INR ticket total into the Stripe charge currency.
+// STRIPE_CURRENCY=inr charges rupees directly; the default keeps the original
+// USD conversion (INR_TO_USD_RATE) used for the Stripe test account.
+function stripeUnitAmount(inrPerSeat) {
+  const currency = (process.env.STRIPE_CURRENCY || "usd").toLowerCase();
+  if (currency === "inr") return { currency, unit: Math.max(50, Math.round(inrPerSeat * 100)) };
+  const rate = Number(process.env.INR_TO_USD_RATE) || 86;
+  // Stripe's minimum charge is 50 cents
+  return { currency, unit: Math.max(50, Math.round((inrPerSeat / rate) * 100)) };
 }
-
-// Check if a single seat is taken
-function getSeat(occ, seat) {
-  if (!occ) return false;
-  return occ instanceof Map ? !!occ.get(seat) : !!occ[seat];
-}
-
-// Mark a seat as taken inside the show document
-function setSeat(showDoc, seat) {
-  if (showDoc.occupiedSeats instanceof Map) {
-    showDoc.occupiedSeats.set(seat, true);
-  } else {
-    showDoc.occupiedSeats = showDoc.occupiedSeats || {};
-    showDoc.occupiedSeats[seat] = true;
-  }
-  showDoc.markModified("occupiedSeats");
-}
-
-// Check if selected seats are still available
-export const checkavailabilty = async (showId, selectedSeats) => {
-  try {
-    const show = await Show.findById(showId);
-    if (!show) return false;
-
-    const occ = show.occupiedSeats || new Map();
-    const anyTaken = selectedSeats.some((s) => getSeat(occ, s));
-
-    return !anyTaken;
-  } catch (error) {
-    console.error("checkavailability:", error);
-    return false;
-  }
-};
 
 // Main function: create a booking + start Stripe payment
 export const createBooking = async (req, res) => {
+  const userId = req.userId;
+  const { showId } = req.body || {};
+  const seats = Array.isArray(req.body?.selectedSeats)
+    ? [...new Set(req.body.selectedSeats.map((s) => String(s).toUpperCase()))]
+    : [];
+
+  if (!mongoose.Types.ObjectId.isValid(showId) || seats.length === 0) {
+    return res.status(400).json({ success: false, message: "Please select a show and at least one seat" });
+  }
+  if (seats.length > MAX_SEATS_PER_BOOKING) {
+    return res.status(400).json({ success: false, message: `You can book up to ${MAX_SEATS_PER_BOOKING} seats at a time` });
+  }
+  if (!seats.every((s) => SEAT_REGEX.test(s))) {
+    return res.status(400).json({ success: false, message: "Invalid seat selection" });
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    return res.status(503).json({ success: false, message: "Payments are not configured" });
+  }
+
+  const show = await Show.findById(showId).populate("movie", "originalTitle primaryImage").lean();
+  if (!show) return res.status(404).json({ success: false, message: "Show not found" });
+  if (new Date(show.showDateTime).getTime() < Date.now() - 5 * 60 * 1000) {
+    return res.status(400).json({ success: false, message: "This show has already started" });
+  }
+
+  // Free seats from holds that expired without the background job running
+  await releaseStaleHolds({ show: show._id }).catch(() => {});
+
+  const reserved = await reserveSeats(showId, seats);
+  if (!reserved) {
+    return res.status(409).json({
+      success: false,
+      message: "Some of those seats were just taken. Please pick different seats.",
+    });
+  }
+
+  let booking = null;
   try {
-    // Get user email from Clerk (used for Stripe receipts)
-    const { userId } = getAuth(req) || {};
-    let userEmail = null;
-
-    if (userId) {
-      try {
-        const u = await clerkClient.users.getUser(userId);
-        userEmail =
-          u?.emailAddresses?.find((e) => e.id === u.primaryEmailAddressId)
-            ?.emailAddress || null;
-      } catch (e) {
-        console.warn("Could not fetch Clerk user:", e.message);
-      }
+    let userEmail;
+    try {
+      userEmail = primaryEmailOf(await getClerkUser(userId)) || undefined;
+    } catch (e) {
+      console.warn("Could not fetch Clerk user:", e.message);
     }
 
-    const { showId, selectedSeats } = req.body;
-    const origin = req.headers.origin;
-
-    if (!showId || !Array.isArray(selectedSeats) || selectedSeats.length === 0) {
-      return res.status(400).json({ success: false, message: "Invalid input" });
-    }
-
-    // Make sure the seats aren't already booked
-    const available = await checkavailabilty(showId, selectedSeats);
-    if (!available) {
-      return res.json({
-        success: false,
-        message: "Selected seats are not available",
-      });
-    }
-
-    // Load the show and reserve the seats in the database
-    const show = await Show.findById(showId).populate("movie");
-    if (!show) return res.status(404).json({ success: false, message: "Show not found" });
-
-    for (const seat of selectedSeats) setSeat(show, seat);
-    await show.save();
-
-    // Create a booking entry
-    const booking = await Booking.create({
-      user: userId || null,
+    booking = await Booking.create({
+      user: userId,
       show: showId,
-      amount: (show.showprice || 0) * selectedSeats.length,
-      bookedseats: selectedSeats,
+      amount: (show.showprice || 0) * seats.length,
+      bookedseats: seats,
     });
 
-    // Start a Stripe Checkout payment
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-    // Convert INR → USD (simple conversion for demo)
-    const conversionRate = Number(process.env.INR_TO_USD_RATE) || 86;
-    const usdAmount = booking.amount / conversionRate;
-    const amountInCents = Math.floor(usdAmount * 100);
-
-    const line_items = [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: { name: show.movie?.originalTitle || "Ticket" },
-          unit_amount: amountInCents,
-        },
-        quantity: 1,
-      },
-    ];
+    const { currency, unit } = stripeUnitAmount(show.showprice || 0);
+    const origin = frontendOrigin(req);
 
     const session = await stripe.checkout.sessions.create({
       success_url: `${origin}/loading/my-bookings`,
       cancel_url: `${origin}/my-bookings`,
-      line_items,
       mode: "payment",
-      customer_email: userEmail || undefined,
+      line_items: [
+        {
+          price_data: {
+            currency,
+            product_data: {
+              name: show.movie?.originalTitle || "Movie ticket",
+              description: `Seats ${seats.join(", ")}`,
+              ...(show.movie?.primaryImage?.startsWith("https://") ? { images: [show.movie.primaryImage] } : {}),
+            },
+            unit_amount: unit,
+          },
+          quantity: seats.length,
+        },
+      ],
+      customer_email: userEmail,
       payment_intent_data: userEmail ? { receipt_email: userEmail } : undefined,
       metadata: { bookingId: booking._id.toString() },
+      // Stripe's minimum lifetime is 30 minutes; the seat-hold job expires it sooner
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
     });
 
-    // Save Stripe payment URL
     booking.paymentLink = session.url;
+    booking.stripeSessionId = session.id;
     await booking.save();
 
-    // Send background jobs (payment checks and notifications)
-    await inngest.send({
-      name: "app/checkpayment",
-      data: { bookingId: booking._id.toString() },
-    });
-
-    await inngest.send({
-      name: "app/show.booked",
-      data: { bookingId: booking._id.toString() },
-    });
+    // Release the seats if payment doesn't arrive in time.
+    // A failure here must not break the booking — the webhook/expiry is the fallback.
+    inngest
+      .send({ name: "app/checkpayment", data: { bookingId: booking._id.toString() } })
+      .catch((e) => console.warn("Inngest checkpayment send failed:", e.message));
 
     return res.json({ success: true, url: session.url });
   } catch (error) {
     console.error("createBooking error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    // Roll back the seat hold so the seats don't stay locked forever
+    await freeSeats(showId, seats).catch(() => {});
+    if (booking) await Booking.deleteOne({ _id: booking._id }).catch(() => {});
+    return res.status(500).json({ success: false, message: "Could not start payment. Please try again." });
   }
 };
 
@@ -155,13 +137,17 @@ export const createBooking = async (req, res) => {
 export const getoccupiedSeats = async (req, res) => {
   try {
     const { showId } = req.params;
-    if (!showId) return res.status(400).json({ success: false, message: "ShowId required" });
+    if (!mongoose.Types.ObjectId.isValid(showId)) {
+      return res.status(400).json({ success: false, message: "Invalid show" });
+    }
 
-    const show = await Show.findById(showId);
+    await releaseStaleHolds({ show: showId }).catch(() => {});
+
+    const show = await Show.findById(showId).select("occupiedSeats").lean();
     if (!show) return res.status(404).json({ success: false, message: "Show not found" });
 
-    const occupiedSeats = toTakenSeatArray(show.occupiedSeats);
-    return res.json({ success: true, occupiedSeats });
+    res.set("Cache-Control", "no-store");
+    return res.json({ success: true, occupiedSeats: seatsTakenList(show.occupiedSeats) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

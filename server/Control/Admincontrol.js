@@ -1,56 +1,53 @@
 // Purpose: Admin and owner controllers for CineGo.
 // These handlers power the admin dashboard, admin management (grant/revoke), lists,
 // and demo helpers used in sandbox mode.
-// Keep controllers focused: authorize first, then run domain logic.
+// Authorization happens in Middleware/Auth.js; handlers only add demo-mode rules.
 
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
 import User from "../models/User.js";
-import { clerkClient, getAuth } from "@clerk/express";
 import DemoShow from "../models/DemoShow.js";
-import Movie from "../models/Movie.js";
-import axios from "axios";
+import { clerkClient, getAuth } from "@clerk/express";
+import {
+  getClerkUser,
+  forgetClerkUser,
+  primaryEmailOf,
+  rolesOf,
+  ensureAdminRoleSaved,
+} from "../lib/clerkUsers.js";
+import { addshow } from "./Showcontrol.js";
 
-// Helper: get primary email (lowercased) from a Clerk user object
-const primaryEmailOf = (u) =>
-  u?.emailAddresses?.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress?.toLowerCase() || "";
+// ---------- role checks ----------
 
-// role checks
 // Responds with whether the current user is an admin (server-validated).
+// Also persists role=admin for accounts listed in ADMIN_EMAILS.
 export const isAdmin = async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const { userId } = getAuth(req) || {};
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const user = await clerkClient.users.getUser(userId);
-    const isAdmin = user?.privateMetadata?.role === "admin";
-    return res.json({ success: true, isAdmin, userId });
+    const user = await getClerkUser(userId);
+    const roles = rolesOf(user);
+    if (roles.admin) await ensureAdminRoleSaved(user);
+    return res.json({ success: true, isAdmin: roles.admin, isDemo: roles.demo, isOwner: roles.owner, userId });
   } catch {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Responds with whether the current user is a configured owner (based on env OWNER_EMAIL)
 export const isOwner = async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const { userId } = getAuth(req) || {};
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
-
-    const me = await clerkClient.users.getUser(userId);
-    const email = primaryEmailOf(me);
-    const owners = (process.env.OWNER_EMAIL || "")
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-
-    return res.json({ success: true, isOwner: !!email && owners.includes(email) });
+    const roles = rolesOf(await getClerkUser(userId));
+    return res.json({ success: true, isOwner: roles.owner });
   } catch {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// owner-only admin management
-// List all admins (owner-only). This uses Clerk's user list and filters by privateMetadata.role.
+// ---------- owner-only admin management ----------
+
 export const listAdmins = async (_req, res) => {
   try {
     const { data: users } = await clerkClient.users.getUserList({ limit: 200 });
@@ -60,6 +57,7 @@ export const listAdmins = async (_req, res) => {
         id: u.id,
         email: primaryEmailOf(u),
         name: u.firstName || u.username || primaryEmailOf(u),
+        demo: u?.privateMetadata?.demo === true,
       }));
     res.json({ success: true, admins });
   } catch {
@@ -67,87 +65,130 @@ export const listAdmins = async (_req, res) => {
   }
 };
 
-// Grant admin by email (owner-only).
-// We look up the user in Clerk and set privateMetadata.role = "admin".
+async function findUserByEmail(email) {
+  const { data: users } = await clerkClient.users.getUserList({ emailAddress: [email], limit: 1 });
+  return users?.[0] || null;
+}
+
 export const grantAdmin = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = String(req.body?.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ success: false, message: "Email required" });
 
-    const { data: users } = await clerkClient.users.getUserList({ emailAddress: [email], limit: 1 });
-    const u = users?.[0];
+    const u = await findUserByEmail(email);
     if (!u) return res.status(404).json({ success: false, message: "User not found" });
 
-    await clerkClient.users.updateUser(u.id, { privateMetadata: { ...u.privateMetadata, role: "admin" } });
+    const pm = { ...u.privateMetadata, role: "admin" };
+    delete pm.demo; // a granted admin is a real admin
+    await clerkClient.users.updateUser(u.id, { privateMetadata: pm });
+    forgetClerkUser(u.id);
     res.json({ success: true, message: `Granted admin to ${email}` });
   } catch {
     res.status(500).json({ success: false, message: "Failed to grant admin" });
   }
 };
 
-// Revoke admin by email (owner-only).
-// Deletes the role field from privateMetadata to remove admin privileges.
 export const revokeAdmin = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = String(req.body?.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ success: false, message: "Email required" });
 
-    const { data: users } = await clerkClient.users.getUserList({ emailAddress: [email], limit: 1 });
-    const u = users?.[0];
+    const u = await findUserByEmail(email);
     if (!u) return res.status(404).json({ success: false, message: "User not found" });
 
     const pm = { ...u.privateMetadata };
     delete pm.role;
+    delete pm.demo;
     await clerkClient.users.updateUser(u.id, { privateMetadata: pm });
+    forgetClerkUser(u.id);
     res.json({ success: true, message: `Revoked admin from ${email}` });
   } catch {
     res.status(500).json({ success: false, message: "Failed to revoke admin" });
   }
 };
 
-// dashboard & lists
-// Return dashboard metrics and active shows. Includes demo shows if request is in demo mode.
+// ---------- dashboard & lists ----------
+
+// Dashboard metrics. Active shows are summarised per movie (with the automatic
+// schedule there are hundreds of individual shows).
 export const adminDashboarddata = async (req, res) => {
   try {
-    const bookings = await Booking.find({ isPaid: true });
-    let activeshows = await Show.find({ showDateTime: { $gte: new Date() } }).populate("movie");
+    const now = new Date();
+    const [revenueAgg, totalUsers, perMovie, activeCount] = await Promise.all([
+      Booking.aggregate([
+        { $match: { isPaid: true } },
+        { $group: { _id: null, revenue: { $sum: "$amount" }, bookings: { $sum: 1 }, tickets: { $sum: { $size: "$bookedseats" } } } },
+      ]),
+      User.countDocuments(),
+      Show.aggregate([
+        { $match: { showDateTime: { $gte: now } } },
+        { $sort: { showDateTime: 1 } },
+        {
+          $group: {
+            _id: "$movie",
+            showDateTime: { $first: "$showDateTime" },
+            showprice: { $min: "$showprice" },
+            showCount: { $sum: 1 },
+          },
+        },
+        { $lookup: { from: "movies", localField: "_id", foreignField: "_id", as: "movie" } },
+        { $unwind: "$movie" },
+        {
+          $project: {
+            showDateTime: 1,
+            showprice: 1,
+            showCount: 1,
+            "movie._id": 1,
+            "movie.originalTitle": 1,
+            "movie.primaryImage": 1,
+            "movie.averageRating": 1,
+          },
+        },
+        { $sort: { showDateTime: 1 } },
+      ]),
+      Show.countDocuments({ showDateTime: { $gte: now } }),
+    ]);
 
+    let activeshows = perMovie;
     if (req.isDemo) {
-      // OPTIONAL: demo shows are stored separately so sandbox users don't pollute real data.
-      const demo = await DemoShow.find({
-        demoOwner: req.demoUserId,
-        showDateTime: { $gte: new Date() },
-      }).populate("movie");
-      activeshows = [...activeshows, ...demo];
+      const demo = await DemoShow.find({ demoOwner: req.demoUserId, showDateTime: { $gte: now } })
+        .populate("movie", "originalTitle primaryImage averageRating")
+        .lean();
+      activeshows = [...activeshows, ...demo.map((d) => ({ ...d, showCount: 1, isDemo: true }))];
     }
 
-    const dashboarddata = {
-      totalUsers: await User.countDocuments(),
-      totalRevenue: bookings.reduce((sum, b) => sum + b.amount, 0),
-      totalBookings: bookings.length,
-      activeshows,
-    };
-    res.json({ success: true, dashboarddata });
+    const totals = revenueAgg[0] || { revenue: 0, bookings: 0, tickets: 0 };
+    res.json({
+      success: true,
+      dashboarddata: {
+        totalUsers,
+        totalRevenue: totals.revenue,
+        totalBookings: totals.bookings,
+        totalTickets: totals.tickets,
+        activeShowCount: activeCount,
+        activeshows,
+      },
+    });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Return all upcoming shows (real + optional demo shows).
+// Return upcoming shows (real + the demo user's sandbox shows).
 export const getallshows = async (req, res) => {
   try {
-    const real = await Show.find({ showDateTime: { $gte: new Date() } })
-      .populate("movie")
+    const now = new Date();
+    const real = await Show.find({ showDateTime: { $gte: now } })
+      .select("movie showDateTime showprice occupiedSeats autoGenerated")
+      .populate("movie", "originalTitle")
       .sort({ showDateTime: 1 })
+      .limit(2000)
       .lean();
 
     let demo = [];
     if (req.isDemo) {
-      demo = await DemoShow.find({
-        demoOwner: req.demoUserId,
-        showDateTime: { $gte: new Date() },
-      })
-        .populate("movie")
+      demo = await DemoShow.find({ demoOwner: req.demoUserId, showDateTime: { $gte: now } })
+        .populate("movie", "originalTitle")
         .sort({ showDateTime: 1 })
         .lean();
     }
@@ -156,119 +197,61 @@ export const getallshows = async (req, res) => {
       ...real.map((s) => ({ ...s, isDemo: false })),
       ...demo.map((s) => ({ ...s, isDemo: true })),
     ];
-
     res.json({ success: true, showdata });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Return all bookings (populated with user and show->movie)
-export const getbookings = async (_req, res) => {
+// Return bookings (newest first). Demo admins see anonymised customer names.
+export const getbookings = async (req, res) => {
   try {
     const bookings = await Booking.find({})
-      .populate("user")
-      .populate({ path: "show", populate: { path: "movie" } })
-      .sort({ createdAt: -1 });
-    res.json({ success: true, bookings });
+      .populate("user", "name")
+      .populate({ path: "show", select: "showDateTime showprice movie", populate: { path: "movie", select: "originalTitle" } })
+      .sort({ createdAt: -1 })
+      .limit(1000)
+      .lean();
+
+    const safe = req.isDemo
+      ? bookings.map((b, i) => ({ ...b, user: { name: `Customer ${bookings.length - i}` } }))
+      : bookings;
+    res.json({ success: true, bookings: safe });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // ---------- demo helpers ----------
-// Elevate a user to demo-admin when correct DEMO_CODE is provided.
-// This is purely for sandbox/demo and should be disabled in production.
+
+// Unlock the sandboxed admin demo with DEMO_CODE.
+// Demo admins can browse the admin panel, but anything they create is private to them
+// and they never see other customers' personal details.
 export const demoElevate = async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const { userId } = getAuth(req) || {};
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
     const { code } = req.body || {};
     if (!process.env.DEMO_CODE) return res.status(503).json({ success: false, message: "Demo disabled" });
-    if (code !== process.env.DEMO_CODE) return res.status(403).json({ success: false, message: "Invalid demo code" });
+    if (String(code || "").trim() !== process.env.DEMO_CODE.trim()) {
+      return res.status(403).json({ success: false, message: "Invalid demo code" });
+    }
 
-    const me = await clerkClient.users.getUser(userId);
+    const me = await getClerkUser(userId, { fresh: true });
+    if (rolesOf(me).realAdmin) {
+      return res.json({ success: true, message: "You already have full admin access." });
+    }
     await clerkClient.users.updateUser(userId, {
       privateMetadata: { ...me.privateMetadata, role: "admin", demo: true },
     });
+    forgetClerkUser(userId);
     return res.json({ success: true, message: "Demo admin enabled. Refresh the page." });
   } catch {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Create shows in either public (real) or demo collections depending on role.
-// - Admins create real Show documents.
-// - Demo users create DemoShow documents that are isolated per demo user.
-export const demoCreateShow = async (req, res) => {
-  try {
-    const { userId } = getAuth(req);
-    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
-
-    const { movieId, showsInput = [], showprice } = req.body || {};
-    if (!movieId || !Array.isArray(showsInput) || showsInput.length === 0 || !showprice) {
-      return res.status(400).json({ success: false, message: "Invalid payload" });
-    }
-
-    const me = await clerkClient.users.getUser(userId);
-    const isAdmin = me?.privateMetadata?.role === "admin";
-    const isDemoUsr = req.isDemo === true || me?.privateMetadata?.demo === true;
-
-    // Find existing movie by TMDB ID or fetch from TMDB and create locally.
-    let movie = await Movie.findOne({ tmdbId: String(movieId) });
-    if (!movie) {
-      const { data: m } = await axios.get(`https://api.themoviedb.org/3/movie/${movieId}`, {
-        headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
-      });
-
-      const { data: credits } = await axios.get(`https://api.themoviedb.org/3/movie/${movieId}/credits`, {
-        headers: { Authorization: `Bearer ${process.env.TMDB_KEY}` },
-      });
-
-      const casts = (credits.cast ?? []).slice(0, 12).map((c) => ({
-        fullName: c.name,
-        primaryImage: c.profile_path ? `https://image.tmdb.org/t/p/w500${c.profile_path}` : null,
-      }));
-
-      movie = await Movie.create({
-        tmdbId: String(m.id),
-        originalTitle: m.original_title || m.title || "Untitled",
-        description: m.overview || "",
-        primaryImage: m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : "",
-        thumbnails: m.backdrop_path ? [`https://image.tmdb.org/t/p/w500${m.backdrop_path}`] : [],
-        releaseDate: m.release_date || "",
-        original_language: [m.original_language].filter(Boolean),
-        genres: (m.genres || []).map((g) => g.name),
-        casts,
-        averageRating: m.vote_average ?? null,
-        runtime: m.runtime ?? null,
-        numVotes: m.vote_count ?? null,
-      });
-    }
-
-    // Prepare show documents from input
-    const docs = showsInput.map(({ date, time }) => ({
-      movie: movie._id,
-      showDateTime: new Date(`${date}T${time}`),
-      showprice: Number(showprice),
-      occupiedSeats: {},
-      ...(isDemoUsr ? { isDemo: true, demoOwner: userId } : {}),
-    }));
-
-    // Insert into the appropriate collection depending on role
-    if (isAdmin) {
-      const created = await Show.insertMany(docs);
-      return res.json({ success: true, mode: "public", count: created.length, shows: created });
-    }
-    if (isDemoUsr) {
-      const created = await DemoShow.insertMany(docs);
-      return res.json({ success: true, mode: "demo", count: created.length, shows: created });
-    }
-
-    // If neither admin nor demo user, forbid the operation
-    return res.status(403).json({ success: false, message: "Not allowed" });
-  } catch (e) {
-    return res.status(500).json({ success: false, message: e.message || "Failed to create show" });
-  }
-};
+// Kept for older frontends: real admins create public shows, demo admins create
+// private sandbox shows. Same logic as /api/show/add.
+export const demoCreateShow = addshow;

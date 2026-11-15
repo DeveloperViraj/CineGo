@@ -1,46 +1,81 @@
-// ✅ Updated MovieCard.jsx
-import { StarIcon } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import timeCalculate from '../lib/TimeCalculate';
+import { StarIcon, TicketIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { tmdbImage } from '../lib/api';
+import { CURRENCY, formatRuntime, formatNextShow, releaseYear } from '../lib/format';
 
-const MovieCard = ({ movie }) => {
-  const navigate = useNavigate();
+// Poster card used in every movie grid. Posters are 2:3, so we show them uncropped
+// and load a right-sized TMDB image (w185–w500) instead of the full w500/w780 file.
+const MovieCard = ({ movie, index = 0 }) => {
+  const poster = movie.primaryImage;
+  const meta = [releaseYear(movie.releaseDate), (movie.genres || []).slice(0, 2).join(' / '), formatRuntime(movie.runtime)]
+    .filter(Boolean)
+    .join(' • ');
+
   return (
-    <div
-      className='flex flex-col justify-between p-3 bg-gray-800 rounded-2xl hover:-translate-y-1 transition duration-300 w-66'
-      onClick={() => {
-        navigate(`/movies/${movie._id}`);
-        scrollTo(0, 0);
-      }}
+    <Link
+      to={`/movies/${movie._id}`}
+      className="group block w-full animate-fade-in focus:outline-none"
+      style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
     >
-      <img
-        src={movie.primaryImage}
-        alt="Image"
-        className='rounded-lg h-52 w-full object-cover cursor-pointer'
-      />
-      <p className='font-semibold mt-2'>{movie.originalTitle}</p>
-      <p className='text-sm text-gray-400 mt-2'>
-  {new Date(movie.releaseDate).getFullYear()} •
-  {" "}{(movie.genres || []).slice(0, 2).join(" | ")} • {timeCalculate(movie.runtime)}
-</p>
-
-      <div className="flex items-center justify-between mt-4 pb-3">
-        <button
-          className='px-4 py-2 text-xs bg-primary hover:bg-primary-dull rounded-full transition font-medium cursor-pointer'
-          onClick={() => {
-            navigate(`/movies/${movie._id}`);
-            scrollTo(0, 0);
+      <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition duration-300 group-hover:ring-primary/70 group-focus-visible:ring-2 group-focus-visible:ring-primary">
+        <img
+          src={tmdbImage(poster, 'w342')}
+          srcSet={`${tmdbImage(poster, 'w185')} 185w, ${tmdbImage(poster, 'w342')} 342w, ${tmdbImage(poster, 'w500')} 500w`}
+          sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 220px"
+          alt={`${movie.originalTitle} poster`}
+          loading={index < 6 ? 'eager' : 'lazy'}
+          decoding="async"
+          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.srcset = '';
+            e.currentTarget.src = '/fallback-image.svg';
           }}
-        >
-          Buy Tickets
-        </button>
-        <p className='flex items-center gap-1 mt-2 text-sm text-grap-400 pr-1'>
-          <StarIcon className='h-4 w-4 text-primary fill-primary' />
-          {movie.averageRating}
-        </p>
+        />
+
+        {movie.averageRating > 0 && (
+          <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-xs font-medium backdrop-blur">
+            <StarIcon className="h-3 w-3 fill-primary text-primary" />
+            {Number(movie.averageRating).toFixed(1)}
+          </span>
+        )}
+
+        <div className="absolute inset-x-0 bottom-0 flex translate-y-2 items-end bg-gradient-to-t from-black/90 via-black/40 to-transparent p-3 pt-10 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 max-md:hidden">
+          <span className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-2 text-sm font-medium">
+            <TicketIcon className="h-4 w-4" /> Book tickets
+          </span>
+        </div>
       </div>
-    </div>
+
+      <p className="mt-3 truncate font-semibold leading-tight" title={movie.originalTitle}>
+        {movie.originalTitle}
+      </p>
+      <p className="mt-1 truncate text-xs text-gray-400">{meta}</p>
+      {(movie.minPrice || movie.nextShow) && (
+        <p className="mt-1.5 truncate text-xs text-gray-300">
+          {movie.minPrice ? (
+            <span className="font-medium text-primary-dull">
+              from {CURRENCY}
+              {movie.minPrice}
+            </span>
+          ) : null}
+          {movie.minPrice && movie.nextShow ? ' · ' : ''}
+          {movie.nextShow ? formatNextShow(movie.nextShow) : ''}
+        </p>
+      )}
+    </Link>
   );
 };
+
+export const MovieCardSkeleton = () => (
+  <div className="w-full">
+    <div className="skeleton aspect-[2/3] rounded-xl" />
+    <div className="skeleton mt-3 h-4 w-3/4 rounded" />
+    <div className="skeleton mt-2 h-3 w-1/2 rounded" />
+  </div>
+);
+
+export const movieGridClass =
+  'grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
 
 export default MovieCard;

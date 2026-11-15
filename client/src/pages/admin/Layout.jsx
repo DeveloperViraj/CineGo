@@ -1,48 +1,28 @@
 // pages/admin/Layout.jsx
-import React, { useEffect } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/Appcontext';
 import AdminNavbar from '../../components/AdminNavbar';
 import Adminsidebar from '../../components/Adminsidebar';
 import Loading from '../../components/Loading';
 
 const Layout = () => {
-  const {
-    isAdmin, isOwner,
-    checkingAdmin, checkingOwner,
-    fetchIsAdmin, fetchIsOwner
-  } = useAppContext();
-
+  const { isAdmin, rolesReady } = useAppContext();
   const navigate = useNavigate();
-  const location = useLocation();
 
+  // Wait until the server has told us the roles before deciding to redirect
   useEffect(() => {
-    fetchIsAdmin();
-    fetchIsOwner();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (rolesReady && !isAdmin) navigate('/', { replace: true });
+  }, [rolesReady, isAdmin, navigate]);
 
-  const waiting = checkingAdmin || checkingOwner;
-  const path = location.pathname;
-
-  useEffect(() => {
-  if (waiting) return;
-
-  // All /admin pages require admin (owner is subset; AdminAccess will self-gate)
-  if (path.startsWith("/admin") && !isAdmin) {
-    navigate("/");
-  }
-}, [waiting, isAdmin, path, navigate]);
-
-
-  if (waiting) return <Loading />;
+  if (!rolesReady || !isAdmin) return <Loading />;
 
   return (
     <>
       <AdminNavbar />
       <div className="flex">
         <Adminsidebar />
-        <div className="flex flex-1 justify-center px-4 py-10 md:px-10 h-[calc(100vh-72px)] overflow-y-auto">
+        <div className="h-[calc(100vh-72px)] flex-1 overflow-y-auto px-4 py-10 md:px-10">
           <Outlet />
         </div>
       </div>

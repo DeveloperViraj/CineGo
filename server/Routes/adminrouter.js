@@ -15,9 +15,11 @@ import {
   demoElevate,
   demoCreateShow,
 } from '../Control/Admincontrol.js';
+import { runAutoSchedule, autoScheduleStatus } from '../Control/Showcontrol.js';
 
 import {
   protectAdmin,
+  protectRealAdmin,
   protectOwner,
   protectUser
 } from '../Middleware/Auth.js';
@@ -26,27 +28,28 @@ const adminRouter = express.Router();
 
 // -------- Role checks --------
 // These let the frontend know whether the user is admin or owner.
-// protectUser = must be logged in.
 adminRouter.get('/isAdmin', protectUser, isAdmin);
 adminRouter.get('/isOwner', protectUser, isOwner);
 
 // -------- Owner-only routes --------
-// The “owner” is basically the highest role.
-// Only the owner is allowed to view all admins or change admin roles.
+// Only the owner (OWNER_EMAIL) can view all admins or change admin roles.
 adminRouter.get('/admins', protectOwner, listAdmins);
 adminRouter.post('/grant', protectOwner, grantAdmin);
 adminRouter.post('/revoke', protectOwner, revokeAdmin);
 
 // -------- Admin-only routes --------
-// Regular admins can access dashboard data, shows list, and bookings.
+// Demo admins can use these too; the handlers keep their data sandboxed/anonymised.
 adminRouter.get('/dashboarddata', protectAdmin, adminDashboarddata);
 adminRouter.get('/getallshows', protectAdmin, getallshows);
 adminRouter.get('/getallbookings', protectAdmin, getbookings);
+adminRouter.get('/schedule-status', protectAdmin, autoScheduleStatus);
 
-// Demo-only routes (optional)
-// These are used in sandbox/demo versions of the app.
-// You can remove these if you're not using demo mode.
+// Real admins only: changes the public catalog
+adminRouter.post('/sync-shows', protectRealAdmin, runAutoSchedule);
+
+// -------- Demo --------
 adminRouter.post('/demo-elevate', protectUser, demoElevate);
-adminRouter.post('/demo-show', protectUser, demoCreateShow);
+// protectAdmin attaches req.roles so demo admins get private sandbox shows
+adminRouter.post('/demo-show', protectAdmin, demoCreateShow);
 
 export default adminRouter;
